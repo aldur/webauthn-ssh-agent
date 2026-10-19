@@ -3,7 +3,7 @@
 :root {
   color-scheme: light dark;
   font-family: system-ui, sans-serif;
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1.5;
 }
 
@@ -29,6 +29,8 @@ h2 {
 code,
 .key-line {
   font-family: ui-monospace, monospace;
+  /* Not the browsers' smaller default for monospace. */
+  font-size: 0.85rem;
 }
 
 button {
