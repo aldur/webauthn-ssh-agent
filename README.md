@@ -35,6 +35,21 @@ Agent forwarding (`ssh -A`) works, with an extra confirmation per login.  The
 `ssh` on the server you forward from must be OpenSSH 10.3+: older versions
 reject the WebAuthn signatures a browser makes when they come from an agent.
 
+## Supported authenticators
+
+Everything goes through WebAuthn, so any authenticator Chrome supports works:
+
+| Authenticator | What you get |
+|---|---|
+| **U2F-only security key** (older keys) | Basic keys: stored as a credential ID, a touch to log in.  No discoverable keys, no PIN or fingerprint (U2F has neither). |
+| **FIDO2 security key** (YubiKey 5, Titan, SoloKey, Nitrokey, …) | Everything: optional discoverable keys, and a PIN or fingerprint for every login, enforced by the security key itself. |
+| **Passkey** (Google Password Manager, iCloud Keychain, Windows Hello, a phone, …) | Always discoverable, held (and usually synced) by the provider, unlocked with your screen lock or biometrics. |
+
+Keys are ECDSA P-256 only: OpenSSH's WebAuthn signature format doesn't exist
+for Ed25519.  Keys made with `ssh-keygen -t ecdsa-sk` can't be used (they're
+bound to `ssh:`, which browsers don't allow); create keys here instead, and one
+security key can hold both.
+
 ## Where keys live
 
 | | Security key | Security key, discoverable | Passkey |
@@ -46,8 +61,7 @@ reject the WebAuthn signatures a browser makes when they come from an agent.
 The extension stores only the public key and credential ID, synced with your
 Chrome profile.  For a non-discoverable key, the credential ID is the private
 key wrapped by the security key: neither works without the other.  A
-*discoverable credential* is also called a *resident key*; discoverable keys
-and PINs need a FIDO2 security key.
+*discoverable credential* is also called a *resident key*.
 
 **Require a PIN or fingerprint** adds `verify-required` to the
 `authorized_keys` line, and asks the security key to enforce it too
@@ -75,8 +89,7 @@ Secure Shell relays agent requests to this extension, which offers
 `sk-ecdsa-sha2-nistp256@openssh.com` keys and signs with
 `navigator.credentials.get()`, in OpenSSH's
 `webauthn-sk-ecdsa-sha2-nistp256@openssh.com` format (see [PROTOCOL.u2f]).
-Keys are bound to the extension's origin, so keys from `ssh-keygen -t ecdsa-sk`
-can't be used.
+Keys are bound to the extension's origin.
 
 ## Development
 
