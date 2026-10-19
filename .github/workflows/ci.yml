@@ -53,18 +53,22 @@ jobs:
       - name: End-to-end test
         run: ./test/e2e/run.sh
 
+      # The dev build keeps the manifest "key" (fixed extension ID); the
+      # Store build doesn't (the Store assigns the ID).
       - name: Package
         id: package
         run: |
           version=$(jq -r .version manifest.json)
           name="webauthn-ssh-agent-${version}-$(git rev-parse --short HEAD)"
-          ./scripts/package.sh "$name.zip"
+          mkdir dist
+          ./scripts/package.sh "dist/$name.zip"
+          ./scripts/package.sh --store "dist/webauthn-ssh-agent-${version}-store.zip"
           echo "name=$name" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ steps.package.outputs.name }}
-          path: ${{ steps.package.outputs.name }}.zip
+          path: dist/*.zip
           if-no-files-found: error
 
     outputs:
@@ -90,6 +94,13 @@ jobs:
           cat > notes.md <<EOF
           WebAuthn SSH Agent, built from ${GITHUB_SHA}.
 
+          * \`${ZIP}\`: dev build for "Load unpacked", with a fixed
+            extension ID (balijighililfegobipoacjgpmpckepg).
+          * \`webauthn-ssh-agent-*-store.zip\`: for uploading to the Chrome
+            Web Store (no manifest "key").
+
+          To install the dev build:
+
           1. Download and unzip \`${ZIP}\` somewhere permanent.
           2. Open \`chrome://extensions\`, enable **Developer mode**, click
              **Load unpacked** and pick the unzipped folder (the one
@@ -97,13 +108,14 @@ jobs:
           3. Click the extension's toolbar button ("Manage keys and
              settings") to add a key and set up Secure Shell.
 
-          SHA-256: \`$(sha256sum "$ZIP" | cut -d' ' -f1)\`
+          SHA-256:
+          $(sha256sum *.zip | sed 's/^/    /')
           EOF
 
       - name: Publish tagged release
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          gh release create "$GITHUB_REF_NAME" "$ZIP" \
+          gh release create "$GITHUB_REF_NAME" *.zip \
               --title "WebAuthn SSH Agent $GITHUB_REF_NAME" \
               --notes-file notes.md
 
@@ -111,5 +123,5 @@ jobs:
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: |
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest "$ZIP" --target "$GITHUB_SHA" \
+          gh release create latest *.zip --target "$GITHUB_SHA" \
               --prerelease --title "Latest build" --notes-file notes.md
