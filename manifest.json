@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WebAuthn SSH Agent",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "SSH agent for Secure Shell that keeps your SSH keys on security keys (FIDO2/U2F) or passkeys, via WebAuthn.",
   "icons": {
     "16": "icons/icon-16.png",

@@ -125,7 +125,7 @@ ctx.on('page', async (page) => {
       // Skip the confirmation from now on, from the window itself.
       await page.check('#skip');
     }
-    // Click Continue once it's enabled (by then the authenticator is there).
+    // Click Continue (by then the authenticator is there).
     await page.locator('#continue:not(.hidden)').click({timeout: 5000});
   } catch (e) {
     // Fine if it signed without Continue (the confirmation was skipped).

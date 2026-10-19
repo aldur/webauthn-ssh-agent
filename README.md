@@ -31,7 +31,7 @@ reject the WebAuthn signatures a browser makes when they come from an agent.
 
 | | Security key | Security key, discoverable | Passkey |
 |---|---|---|---|
-| **Private key** | Never leaves the security key | Stored on the security key | Held by the passkey provider (may sync) |
+| **Private key** | Never leaves the security key | Never leaves the security key | Held by the passkey provider (may sync) |
 | **Login needs** | The security key + the synced credential ID | The security key | The passkey provider |
 | **New computer** | Chrome sync | Import | Import |
 
@@ -49,24 +49,13 @@ key didn't confirm it.
 ## Security
 
 * Only Secure Shell can use the agent (Secure Shell's dev build only if you
-  allow it in **Manage keys and settings**).  This protects against other
-  extensions, not against someone who can load unpacked extensions on your
-  computer.
-* Every signature first shows the caller, action, user, server and route as
-  labelled fields (text from the request is escaped and shortened), and only
-  asks for the touch after you click **Continue**: Chrome's own dialog would
-  hide them; the title bar repeats the essentials.  **Skip the
-  confirmation** (in that window or in Manage keys and settings) goes
-  straight on to the touch for direct logins to a verified server, showing
-  the request in a window beside Chrome's prompt.
+  allow it in **Manage keys and settings**).
 * The agent checks OpenSSH's session binding (`session-bind@openssh.com`): it
   shows the server's verified host key and refuses logins for any other
   session.
 * Logins through a forwarded agent or from clients that don't bind sessions,
-  and file signatures (e.g. git commits), come with a warning, and Continue
-  only works after a second.  Anything else is refused unless you allow it.
-* At most 2 waiting requests per connection, and **Deny all from this
-  connection**.
+  and file signatures (e.g. git commits), come with a warning.  Anything else
+  is refused unless you allow it.
 * Keys synced from another computer show as *not verified* until you
   **Verify** them with one touch, since synced data could be tampered with.
 * Only the `storage` permission, a strict content security policy, no

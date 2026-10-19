@@ -17,13 +17,6 @@ import {saveSetting} from './settings.js';
 const DETAILS_WIDTH = 440;
 const DETAILS_MIN_HEIGHT = 420;
 
-/**
- * How long Continue stays disabled, so a click or key press meant for
- * something else (the window takes focus) can't approve the request: longer
- * for requests that come with a warning.
- */
-const CONTINUE_DELAY_MS = {ask: 500, confirm: 1000};
-
 const id = location.hash.slice(1);
 const $ = (elementId) => document.getElementById(elementId);
 
@@ -92,16 +85,11 @@ async function trySign(request) {
  * Only start WebAuthn when the user has read the request: Chrome's security
  * key & passkey dialogs cover this window.
  *
- * @param {!Object} request From the background page.
  */
-function showContinue(request) {
-  $('continue').disabled = true;
+function showContinue() {
   $('continue').classList.remove('hidden');
   $('status').textContent = 'Check the request, then click Continue.';
-  setTimeout(() => {
-    $('continue').disabled = false;
-    $('continue').focus();  // Enter continues.
-  }, CONTINUE_DELAY_MS[request.decision] ?? CONTINUE_DELAY_MS.confirm);
+  $('continue').focus();  // Enter continues.
 }
 
 $('cancel').onclick = () => finish({error: 'cancelled by the user'});
@@ -126,6 +114,6 @@ if (!request) {
       $('skip').onchange = () =>
         saveSetting('skipConfirmation', $('skip').checked);
     }
-    showContinue(request);
+    showContinue();
   }
 }
