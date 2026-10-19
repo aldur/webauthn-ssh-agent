@@ -32,7 +32,7 @@
  */
 
 import {recoverPublicKeys, verifySignature} from './p256.js';
-import {Confirmation} from './settings.js';
+import {Confirmation, loadSettings} from './settings.js';
 import {cleanName, utf8Prefix} from './text.js';
 import {
   authorizedKeysLine, concat, decodeDerEcdsaSignature, equalBytes,
@@ -277,14 +277,18 @@ async function recordVerified(key) {
 }
 
 /**
- * Whether this computer created, imported or verified the key, unchanged.
- * Synced data could have been tampered with (e.g. via a compromised account)
- * to swap the public key, so only verified keys' public keys are offered.
+ * Whether this computer created, imported or verified the key, unchanged, or
+ * the user chose to trust synced keys.  Synced data could have been tampered
+ * with (e.g. via a compromised account) to swap the public key, so only
+ * verified keys' public keys are offered.
  *
  * @param {!StoredKey} key
  * @return {!Promise<boolean>}
  */
 export async function isVerified(key) {
+  if ((await loadSettings()).trustSyncedKeys) {
+    return true;
+  }
   const name = VERIFIED_PREFIX + key.credentialId;
   const items = await chrome.storage.local.get(name);
   return items[name] === await integrityDigest(key);

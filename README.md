@@ -80,7 +80,8 @@ key didn't confirm it.
   and file signatures (e.g. git commits), come with a warning.  Anything else
   is refused unless you allow it.
 * Keys synced from another computer show as *not verified* until you
-  **Verify** them with one touch, since synced data could be tampered with.
+  **Verify** them with one touch, since synced data could be tampered with
+  (or turn on **Trust keys synced** if you trust your Google account).
 * Only the `storage` permission, a strict content security policy, no
   dependencies.
 

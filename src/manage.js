@@ -57,42 +57,38 @@ function renderLevel(key, verified) {
  * @return {!Element}
  */
 function renderKey(key, verified) {
-  const li = document.createElement('li');
-
-  const remove = document.createElement('button');
-  remove.textContent = '🗑';
-  remove.title = 'Forget this key';
-  remove.onclick = async () => {
-    // Ask for a second click to confirm.
-    if (remove.dataset.armed) {
-      await deleteKey(key.credentialId);
-      setStatus(`Forgot "${key.comment}".  Also remove it from ` +
-                '~/.ssh/authorized_keys on your servers.');
-      return;
+  const element = (tag, className, text) => {
+    const e = document.createElement(tag);
+    e.className = className;
+    if (text) {
+      e.textContent = text;
     }
-    remove.dataset.armed = '1';
-    remove.textContent = 'Forget';
-    setStatus(`Click "Forget" to confirm forgetting "${key.comment}".`);
-    setTimeout(() => {
-      delete remove.dataset.armed;
-      remove.textContent = '🗑';
-    }, 5000);
+    return e;
   };
+  const li = element('li', 'key');
 
-  const name = document.createElement('span');
-  name.textContent = key.comment;
+  const head = element('div', 'key-head');
+  head.append(
+      element('span', 'key-name', key.comment),
+      element('span', 'details', [
+        describeKey(key),
+        ...(key.verify ? [key.verifyEnforcedByKey ? 'PIN required' :
+                              'PIN required (enforced by servers only)'] : []),
+        new Date(key.created).toLocaleDateString(),
+      ].join(' · ')));
+  li.append(head);
 
-  const details = document.createElement('span');
-  details.className = 'details';
-  details.textContent = [
-    describeKey(key),
-    ...(key.verify ? [key.verifyEnforcedByKey ? 'PIN required' :
-                          'PIN required (enforced by servers only)'] : []),
-    new Date(key.created).toLocaleDateString(),
-  ].join(' · ');
+  if (!verified) {
+    // Synced data could have been tampered with: say so, and offer to check
+    // that the public key really belongs to the credential.
+    li.append(element('p', 'unverified',
+        'Not verified on this computer: its public key comes from synced ' +
+        'data, which could have been tampered with.'));
+  }
 
-  const copy = document.createElement('button');
-  copy.textContent = 'Copy public key';
+  const actions = element('div', 'key-actions');
+  const copy = element('button', '',
+      verified ? 'Copy public key' : 'Copy unverified public key');
   copy.onclick = async () => {
     await navigator.clipboard.writeText(keyAuthorizedKeysLine(key));
     setStatus(verified ?
@@ -101,23 +97,8 @@ function renderKey(key, verified) {
         `Copied the public key of "${key.comment}", which is not verified: ` +
             'click Verify first to be sure it is really yours.');
   };
-  const level = document.createElement('label');
-  level.className = 'level';
-  level.append('Confirmation: ', renderLevel(key, verified));
-  li.append(remove, ' ', name, details, level);
-
-  if (verified) {
-    li.append(copy);
-  } else {
-    // Synced data could have been tampered with: say so, and offer to check
-    // that the public key really belongs to the credential.
-    const warning = document.createElement('span');
-    warning.className = 'unverified';
-    warning.textContent = 'Not verified on this computer: its public key ' +
-        'comes from synced data, which could have been tampered with.';
-    copy.textContent = 'Copy unverified public key';
-    const verify = document.createElement('button');
-    verify.textContent = 'Verify';
+  if (!verified) {
+    const verify = element('button', 'primary', 'Verify');
     verify.title = 'Check with one touch that this key really belongs to ' +
         'your security key or passkey';
     verify.onclick = async () => {
@@ -131,8 +112,31 @@ function renderKey(key, verified) {
         setStatus(`Not verified: ${e.message}`);
       }
     };
-    li.append(warning, verify, copy);
+    actions.append(verify);
   }
+  const level = element('label', 'level', 'Confirmation ');
+  level.append(renderLevel(key, verified));
+
+  const remove = element('button', 'forget', 'Forget');
+  remove.title = 'Forget this key';
+  remove.onclick = async () => {
+    // Ask for a second click to confirm.
+    if (remove.dataset.armed) {
+      await deleteKey(key.credentialId);
+      setStatus(`Forgot "${key.comment}".  Also remove it from ` +
+                '~/.ssh/authorized_keys on your servers.');
+      return;
+    }
+    remove.dataset.armed = '1';
+    remove.textContent = 'Click again to forget';
+    setTimeout(() => {
+      delete remove.dataset.armed;
+      remove.textContent = 'Forget';
+    }, 5000);
+  };
+
+  actions.append(copy, level, remove);
+  li.append(actions);
   return li;
 }
 
@@ -145,6 +149,7 @@ async function load() {
         ...keys.map((key, i) => renderKey(key, verified[i])));
   } else {
     const li = document.createElement('li');
+    li.className = 'empty';
     li.textContent = 'No keys yet.  Add one below.';
     $('keys').replaceChildren(li);
   }
@@ -222,7 +227,8 @@ if (!globalThis.PublicKeyCredential) {
 
 // Security settings: kept on this computer only.
 const settings = await loadSettings();
-for (const name of ['allowUnrecognized', 'allowDevSecureShell']) {
+for (const name of
+         ['allowUnrecognized', 'allowDevSecureShell', 'trustSyncedKeys']) {
   $(name).checked = settings[name];
   $(name).onchange = () => saveSetting(name, $(name).checked);
 }

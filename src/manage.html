@@ -8,82 +8,73 @@
     <link rel="icon" href="../icons/icon-32.png" />
     <script type="module" src="manage.js"></script>
   </head>
-  <body>
+  <body class="manage">
     <h1>Manage keys and settings</h1>
     <p id="version" class="note"></p>
     <p>
-      WebAuthn SSH Agent is an SSH agent for
+      An SSH agent for
       <a href="https://chromewebstore.google.com/detail/iodihamcpbpeioajjeobimgagajmlibd"
          target="_blank" rel="noopener noreferrer">Secure Shell</a> that keeps
-      your SSH keys on security keys (YubiKey, Titan, …) or passkeys.  It never
-      holds a private key, and every login needs your confirmation.
+      your SSH keys on security keys or passkeys.  It never holds a private
+      key, and every login needs your confirmation.
     </p>
 
-    <h2>Use it in Secure Shell</h2>
-    <p>
-      In a Secure Shell connection, set <b>SSH relay server options</b> to:
+    <h2>Set up Secure Shell</h2>
+    <p>In a connection, set <b>SSH relay server options</b> to:</p>
+    <p class="copy-line">
+      <code id="agent-option"></code>
+      <button id="copy-option">Copy</button>
     </p>
-    <p><code id="agent-option"></code> <button id="copy-option">Copy</button></p>
 
     <h2>Your keys</h2>
-    <ul id="keys"></ul>
+    <ul id="keys" class="keys"></ul>
+    <p class="note">
+      Add a key's public key to <code>~/.ssh/authorized_keys</code> on your
+      servers (OpenSSH 8.4 or newer).
+    </p>
 
     <h2>Add a key</h2>
-    <input id="name" type="text" placeholder="Name, e.g. yubikey-5c"
-           autocomplete="off" spellcheck="false" />
+    <label class="field">
+      Name
+      <input id="name" type="text" placeholder="e.g. yubikey-5c"
+             autocomplete="off" spellcheck="false" />
+    </label>
     <fieldset>
-      <legend>Where to keep the private key</legend>
+      <legend>Keep the private key on</legend>
       <label>
         <input type="radio" name="kind" value="security-key" checked />
-        <b>Security key</b> (YubiKey, Titan, …): the private key never leaves
-        it.
+        <b>A security key</b> (YubiKey, Titan, …), which it never leaves
       </label>
       <label class="sub">
         <input id="resident" type="checkbox" />
-        Also store the key <i>on</i> the security key, as a <i>discoverable
-        credential</i> (also called a <i>resident key</i>), so you can import
-        it on another computer with just the security key.  Uses one of its
-        slots, usually needs its PIN, and needs a FIDO2 security key.
+        Also store it <i>on</i> the security key (a <i>discoverable
+        credential</i>, or <i>resident key</i>), to import it elsewhere with
+        just the security key.  Needs a FIDO2 key; uses one of its slots.
       </label>
       <label>
         <input type="radio" name="kind" value="passkey" />
-        <b>Passkey</b>: kept by a passkey provider (Google Password Manager,
-        iCloud Keychain, Windows Hello, a password manager or your phone),
-        which may sync it between your devices.
+        <b>A passkey</b> (Google Password Manager, iCloud Keychain, Windows
+        Hello, a phone, …), which may sync it between your devices
       </label>
     </fieldset>
     <label>
       <input id="verify" type="checkbox" />
-      Require a PIN or fingerprint for every login, not just a touch.  Servers
-      enforce it, and so does the security key if it supports that (the key
-      list says which).
+      Require a PIN or fingerprint for every login, not just a touch
     </label>
-    <button id="create">Create key</button>
-    <button id="import">Import a discoverable key</button>
-    <p id="status" class="status" role="status"></p>
+    <p><button id="create" class="primary">Create key</button></p>
     <p class="note">
-      Chrome's dialog may still offer other places to save the key; the list
-      above shows where each key really went.  Add a key's public key to
-      <code>~/.ssh/authorized_keys</code> on your servers (OpenSSH 8.4 or
-      newer).
+      Chrome's dialog may offer other places to keep the key; the list above
+      shows where each key really went.
+    </p>
+    <p>
+      Have a discoverable key or passkey from elsewhere?
+      <button id="import">Import a discoverable key</button>
     </p>
 
-    <h2>Advanced security settings</h2>
+    <h2>Settings</h2>
     <p class="note">Kept on this computer only, never synced.</p>
-    <label>
-      <input id="allowDevSecureShell" type="checkbox" />
-      Also accept requests from <b>Secure Shell (dev)</b>
-      (<code>algkcnfjnajfhgimadimbjhmpaeohhln</code>), Secure Shell's
-      development channel.  Leave off unless you use it.
-    </label>
-    <label>
-      <input id="allowUnrecognized" type="checkbox" />
-      Offer to sign <b>unrecognized data</b>: requests that are neither an SSH
-      login nor a file signature.  Off: they're refused without asking.
-    </label>
-    <label>
-      <b>Default confirmation</b> for direct logins to a verified server (each
-      key can override it):
+    <label class="field">
+      Default confirmation
       <select id="confirmation">
         <option value="review">Review: show the request, wait for Continue</option>
         <option value="show">Show: show the request beside the prompt</option>
@@ -91,48 +82,62 @@
       </select>
     </label>
     <p class="note">
-      All of them need the security key or passkey's confirmation.  Requests
-      with a warning (through a forwarded agent, to an unverified server, or
-      not a login) are always reviewed.
+      For direct logins to a verified server, with keys that don't set their
+      own.  Every level needs the security key or passkey; requests with a
+      warning (through a forwarded agent, to an unverified server, or not a
+      login) are always reviewed.
     </p>
+    <label>
+      <input id="allowDevSecureShell" type="checkbox" />
+      Accept requests from <b>Secure Shell (dev)</b>, Secure Shell's
+      development channel
+    </label>
+    <label>
+      <input id="trustSyncedKeys" type="checkbox" />
+      <b>Trust keys synced</b> from your other computers, without verifying
+      them here.  Only if you trust your Google account's security: whoever
+      controls it could slip in a key of theirs.
+    </label>
+    <label>
+      <input id="allowUnrecognized" type="checkbox" />
+      Offer to sign <b>unrecognized data</b> (neither an SSH login nor a file
+      signature), instead of refusing it
+    </label>
 
-    <h2>Where do my keys live?</h2>
-    <dl>
-      <dt>Security key</dt>
-      <dd>
-        The private key never leaves the security key.  When the key is
-        created, the security key hands back a <i>credential ID</i>: the
-        private key wrapped (encrypted) with a secret that only that security
-        key has.  This extension stores the credential ID and the public key
-        in your Chrome profile, synced to your other computers if Chrome sync
-        is on.  Logging in needs both that data and the physical security
-        key; neither works alone.  If you lose the stored data, create a new
-        key.
-      </dd>
-      <dt>Security key, discoverable credential (resident key)</dt>
-      <dd>
-        The private key is stored in one of the security key's own slots.
-        Works as above, and on a new computer <b>Import a discoverable key</b>
-        recovers it from the security key alone.  Remove it with the security
-        key's tools (e.g. <code>ykman fido credentials delete</code>).
-      </dd>
-      <dt>Passkey</dt>
-      <dd>
-        The passkey provider holds the private key: Google Password Manager
-        and iCloud Keychain sync it across your devices, Windows Hello keeps
-        it on one device.  Anyone who can unlock the provider can use it.
-        Convenient; a hardware security key is stronger because its keys
-        can't be copied.  Import works here too.
-      </dd>
-    </dl>
-    <p>
-      In every case this extension stores only public data, never a private
-      key, and sends nothing anywhere except signatures to the servers you log
-      in to.  Since synced data could be tampered with (e.g. through a
-      compromised account), a key synced from another computer shows as
-      <i>not verified</i> until you click <b>Verify</b> and confirm with its
-      security key or passkey.  Verify a key before adding its public key to
-      your servers.
-    </p>
+    <details>
+      <summary>Where do my keys live?</summary>
+      <dl>
+        <dt>Security key</dt>
+        <dd>
+          The private key never leaves the security key.  It hands back a
+          <i>credential ID</i>: the private key wrapped (encrypted) with a
+          secret only that security key has.  This extension stores the
+          credential ID and the public key in your Chrome profile, synced to
+          your other computers if Chrome sync is on.  Logging in needs both
+          that data and the security key; neither works alone.
+        </dd>
+        <dt>Security key, discoverable credential (resident key)</dt>
+        <dd>
+          The private key is stored in one of the security key's slots.  It
+          works as above, and <b>Import a discoverable key</b> recovers it
+          with the security key alone.  Remove it with the security key's
+          tools (e.g. <code>ykman fido credentials delete</code>).
+        </dd>
+        <dt>Passkey</dt>
+        <dd>
+          The passkey provider holds the private key, and may sync it across
+          your devices.  Anyone who can unlock the provider can use it; a
+          security key is stronger, as its keys can't be copied.
+        </dd>
+      </dl>
+      <p>
+        This extension only stores public data.  Since synced data could be
+        tampered with (e.g. through a compromised account), a key synced from
+        another computer shows as <i>not verified</i> until you click
+        <b>Verify</b> and confirm with its security key or passkey.
+      </p>
+    </details>
+
+    <p id="status" class="status" role="status"></p>
   </body>
 </html>

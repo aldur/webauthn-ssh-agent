@@ -78,6 +78,8 @@ await cdp.send('WebAuthn.addVirtualAuthenticator', {options: {
   automaticPresenceSimulation: true,
 }});
 await options.goto(`chrome-extension://${extensionId}/src/manage.html`);
+// Not the version: it would date the images.
+await options.evaluate(() => document.getElementById('version').remove());
 for (const [name, verify] of [['yubikey-5c', false], ['backup-key', true]]) {
   await options.fill('#name', name);
   if (verify) {
@@ -88,6 +90,7 @@ for (const [name, verify] of [['yubikey-5c', false], ['backup-key', true]]) {
 }
 await options.locator('#keys li', {hasText: 'yubikey-5c'})
     .getByRole('button', {name: 'Copy public key'}).click();
+await options.evaluate(() => scrollTo(0, 0));
 await options.screenshot({path: path.join(outDir, 'screenshot-1-keys.png')});
 console.log('store/screenshot-1-keys.png');
 
@@ -118,7 +121,8 @@ await sign.addInitScript(() => {
     ...str('sk-ecdsa-sha2-nistp256@openssh.com'), ...enc([1, 2, 3]),
     ...enc(new Array(32).fill(0x2a)),
   ];
-  globalThis.chrome = {runtime: {sendMessage: async (msg) =>
+  globalThis.chrome = {storage: {local: {get: async () => ({})}},
+    runtime: {sendMessage: async (msg) =>
     msg.type === 'get-sign-request' ? {
       key: {comment: 'yubikey-5c', credentialId: 'AA', verify: false,
             kind: 'security-key', resident: false},

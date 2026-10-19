@@ -84,24 +84,102 @@ dd {
   color: GrayText;
 }
 
-#keys li {
-  margin: 0.3em 0;
+/* Manage keys and settings. */
+
+body.manage {
+  --line: color-mix(in srgb, CanvasText 18%, transparent);
+  margin-bottom: 4em;  /* Room for the status bar. */
 }
 
-#keys .details {
-  color: GrayText;
-  padding: 0 1em;
+body.manage h2 {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.2em;
 }
 
-#keys .level {
-  display: inline;
-  margin: 0 0.6em;
+body.manage label {
+  margin: 0.5em 0;
 }
 
-#keys .unverified {
+body.manage .field input,
+body.manage .field select {
   display: block;
+  margin-top: 0.2em;
+}
+
+body.manage .copy-line code {
+  overflow-wrap: anywhere;
+}
+
+button.primary {
   font-weight: bold;
-  margin: 0.2em 0;
+}
+
+.keys {
+  list-style: none;
+  padding: 0;
+}
+
+.keys .key {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 0.6em 0;
+  padding: 0.6em 0.9em;
+}
+
+.keys .empty {
+  color: GrayText;
+}
+
+.keys .key-name {
+  font-weight: bold;
+  margin-right: 0.8em;
+}
+
+.keys .details {
+  color: GrayText;
+}
+
+.keys .unverified {
+  font-weight: bold;
+  margin: 0.4em 0;
+}
+
+.keys .key-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2em 0.6em;
+  margin-top: 0.4em;
+}
+
+.keys .key-actions button,
+body.manage .key-actions .level {
+  margin: 0;
+}
+
+.keys .forget {
+  margin-left: auto !important;
+}
+
+body.manage details {
+  margin-top: 2em;
+}
+
+body.manage summary {
+  cursor: pointer;
+  font-weight: bold;
+}
+
+/* Status messages stay in view, at the bottom of the window. */
+body.manage .status:not(:empty) {
+  background: Canvas;
+  border-top: 1px solid var(--line);
+  bottom: 0;
+  left: 0;
+  margin: 0;
+  padding: 0.6em 1.5em;
+  position: fixed;
+  right: 0;
 }
 
 .status {

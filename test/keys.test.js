@@ -144,10 +144,13 @@ test('a key\'s own confirmation level, for keys verified here', async () => {
 
 test('synced keys are unverified until checked on this computer', async () => {
   const {isVerified, loadKeys} = await import('../src/keys.js');
-  const {sync} = fakeStorage();
+  const {sync, local} = fakeStorage();
   sync['key:a'] = storedKey('a', 1);
   const [key] = await loadKeys();
   assert.equal(await isVerified(key), false);
+  // Unless the user trusts synced keys.
+  local.settings = {trustSyncedKeys: true};
+  assert.equal(await isVerified(key), true);
   delete globalThis.chrome;
   delete globalThis.location;
 });

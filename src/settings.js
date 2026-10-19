@@ -26,6 +26,7 @@ export const Confirmation = Object.freeze({
  * @typedef {{
  *   allowUnrecognized: boolean,
  *   allowDevSecureShell: boolean,
+ *   trustSyncedKeys: boolean,
  *   confirmation: !Confirmation,
  * }}
  */
@@ -37,6 +38,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   allowUnrecognized: false,
   /** Accept connections from Secure Shell's dev channel. */
   allowDevSecureShell: false,
+  /** Treat keys synced from other computers as verified. */
+  trustSyncedKeys: false,
   /** For direct logins to a verified server. */
   confirmation: Confirmation.REVIEW,
 });
