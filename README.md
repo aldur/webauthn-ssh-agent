@@ -56,7 +56,7 @@ security key can hold both.
 |---|---|---|---|
 | **Private key** | Never leaves the security key | Never leaves the security key | Held by the passkey provider (may sync) |
 | **Login needs** | The security key + the synced credential ID | The security key | The passkey provider |
-| **New computer** | Chrome sync | Import | Import |
+| **How to use on a new computer** | Appears through Chrome sync; plug in the security key | Appears through Chrome sync, or **Import** with the security key | Appears through Chrome sync, or **Import**; the passkey must be available there (synced by the provider, or on your phone) |
 
 The extension stores only the public key and credential ID, synced with your
 Chrome profile.  For a non-discoverable key, the credential ID is the private
