@@ -1,0 +1,115 @@
+/* SPDX-License-Identifier: BSD-3-Clause */
+
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+body {
+  margin: 1.5em;
+  max-width: 50em;
+}
+
+h1 {
+  font-size: 1.4em;
+}
+
+h2 {
+  font-size: 1.1em;
+  margin-top: 2em;
+}
+
+code,
+.key-line {
+  font-family: ui-monospace, monospace;
+}
+
+button {
+  margin: 0.2em 0.4em 0.2em 0;
+  padding: 0.25em 0.8em;
+}
+
+body.sign {
+  font-size: 18px;
+}
+
+body.sign #continue {
+  font-weight: bold;
+}
+
+label {
+  display: block;
+  margin: 0.4em 0;
+}
+
+label.sub {
+  margin-left: 2em;
+}
+
+fieldset {
+  border: 1px solid GrayText;
+  border-radius: 6px;
+  margin: 0.6em 0;
+}
+
+dt {
+  font-weight: bold;
+  margin-top: 0.8em;
+}
+
+dd {
+  margin-left: 1.5em;
+}
+
+.note {
+  color: GrayText;
+}
+
+#keys li {
+  margin: 0.3em 0;
+}
+
+#keys .details {
+  color: GrayText;
+  padding: 0 1em;
+}
+
+#keys .unverified {
+  display: block;
+  font-weight: bold;
+  margin: 0.2em 0;
+}
+
+.status {
+  min-height: 1.4em;
+}
+
+.warning {
+  font-weight: bold;
+}
+
+.hidden {
+  display: none;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25em 1em;
+}
+
+.facts dt {
+  margin: 0;
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

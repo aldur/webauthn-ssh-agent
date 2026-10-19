@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "WebAuthn SSH Agent",
+  "version": "0.1.0",
+  "description": "SSH agent for Secure Shell that keeps your SSH keys on security keys (FIDO2/U2F) or passkeys, via WebAuthn.",
+  "minimum_chrome_version": "137",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlvWAB4krz5l4aOQEnCorw/YT+KJQtcLphRxj3tB9i4pcbXnxo6feP+DRGME8uMc3KbLXAREIfWYYoLUbcZT4E3ptRWrN54IlknIzRbRoArhfMZishMMLUou+eOAVHHFrOiwGRGrnmk7DEyZ7Heb9n5INwr2TWoZ68JmqluXOJB7wjv82NMDDRR7eEvfWEEHWtIyhPF9T172KWdMnP9ognDaI1JHYfEEVmm0J3J33KXpQOT6Y/dv8dO3fyrWSEtmyJUCO2LLpZTWiVeEGm8orhh7HRx0x+QntiT5WsYcrHjpQfOIJt0oq8P0G5PcP9fv7QRhpMD6gAObamFMcKOeWgQIDAQAB",
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Manage keys and settings"
+  },
+  "options_ui": {
+    "page": "src/manage.html",
+    "open_in_tab": true
+  },
+  "permissions": [
+    "storage"
+  ],
+  "externally_connectable": {
+    "ids": [
+      "iodihamcpbpeioajjeobimgagajmlibd",
+      "algkcnfjnajfhgimadimbjhmpaeohhln"
+    ]
+  },
+  "content_security_policy": {
+    "extension_pages": "default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types 'none'"
+  },
+  "cross_origin_embedder_policy": {
+    "value": "require-corp"
+  },
+  "cross_origin_opener_policy": {
+    "value": "same-origin"
+  }
+}

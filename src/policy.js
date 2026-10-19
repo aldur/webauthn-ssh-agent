@@ -1,0 +1,118 @@
+// SPDX-License-Identifier: BSD-3-Clause
+
+/**
+ * @fileoverview What to do with a signature request, and what to tell the
+ * user about it.
+ *
+ * Mirrors ssh-agent: on a connection bound to a direct login, a login request
+ * must be for that session & server, or it's refused.  Requests through a
+ * forwarded agent, unbound connections & non-login data come with a warning.
+ * Unrecognized data is refused unless the user allowed it.
+ */
+
+import {SessionBindings} from './binding.js';
+import {describeSignData, equalBytes, fingerprint} from './ssh.js';
+import {displayText} from './text.js';
+
+/**
+ * @enum {string}
+ */
+export const Decision = {
+  /** Refuse without asking the user. */
+  REFUSE: 'refuse',
+  /** Ask, with a warning. */
+  CONFIRM: 'confirm',
+  /** Ask. */
+  ASK: 'ask',
+};
+
+/**
+ * Labelled, display-safe facts about a request.
+ *
+ * @typedef {{
+ *   action: string,
+ *   user: (string|undefined),
+ *   server: string,
+ *   route: string,
+ *   namespace: (string|undefined),
+ *   warning: (string|undefined),
+ * }}
+ */
+export let Fields;
+
+/**
+ * @param {!Uint8Array} data The data to sign.
+ * @param {!SessionBindings} bindings The connection's session bindings.
+ * @param {{allowUnrecognized: boolean}} settings
+ * @return {!Promise<{decision: !Decision, reason: (string|undefined),
+ *                    fields: (!Fields|undefined)}>}
+ */
+export async function assess(data, bindings, settings) {
+  const what = describeSignData(data);
+
+  if (what.kind === 'unknown' && !settings.allowUnrecognized) {
+    return {decision: Decision.REFUSE, reason: 'unrecognized data'};
+  }
+
+  // Where the request comes from.
+  const last = bindings.last;
+  let route;
+  if (!last) {
+    route = 'Unknown: the SSH client did not bind the session';
+  } else if (bindings.forwarded) {
+    route = 'Through a forwarded agent, on the server with host key ' +
+        await fingerprint(bindings.first.hostKey);
+  } else {
+    route = 'Direct connection';
+  }
+
+  if (what.kind === 'login') {
+    let server = 'unknown';
+    if (last && !last.forwarded) {
+      // The bound session is the one being logged in to: it must match.
+      if (!equalBytes(what.sessionId, last.sessionId) ||
+          (what.hostKey && !equalBytes(what.hostKey, last.hostKey))) {
+        return {decision: Decision.REFUSE, reason: 'session mismatch'};
+      }
+      server = `${await fingerprint(last.hostKey)} (verified)`;
+    } else if (what.hostKey) {
+      server = `${await fingerprint(what.hostKey)} (as claimed by the ` +
+          'request, not verified)';
+    }
+    const fields = {
+      action: 'Log in',
+      user: displayText(what.user),
+      server,
+      route,
+    };
+    if (last && !bindings.forwarded) {
+      return {decision: Decision.ASK, fields};
+    }
+    fields.warning = bindings.forwarded ?
+        'A server you forwarded your agent to is asking to log in ' +
+            'elsewhere with your key.  Only continue if you just ran ssh ' +
+            'there yourself.' :
+        'Your SSH client didn\'t say which server this is for.  Only ' +
+            'continue if you expected this.';
+    return {decision: Decision.CONFIRM, fields};
+  }
+
+  if (what.kind === 'sshsig') {
+    return {decision: Decision.CONFIRM, fields: {
+      action: 'Sign data (not a login)',
+      namespace: displayText(what.namespace),
+      server: 'not applicable',
+      route,
+      warning: 'This is not a login.  Only continue if you are signing ' +
+          'something yourself, e.g. a git commit.',
+    }};
+  }
+
+  return {decision: Decision.CONFIRM, fields: {
+    action: 'Sign unrecognized data',
+    server: 'unknown',
+    route,
+    warning: 'This is not an SSH login or file signature.  Only continue if ' +
+        'you know what it is.',
+  }};
+}

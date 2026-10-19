@@ -1,0 +1,120 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: BSD-3-Clause -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Manage keys and settings</title>
+    <link rel="stylesheet" href="style.css" />
+    <script type="module" src="manage.js"></script>
+  </head>
+  <body>
+    <h1>Manage keys and settings</h1>
+    <p>
+      WebAuthn SSH Agent is an SSH agent for Secure Shell that keeps your SSH
+      keys on security keys (YubiKey, Titan, …) or passkeys.  It never holds a private key, and every
+      login needs your confirmation.
+    </p>
+
+    <h2>Use it in Secure Shell</h2>
+    <p>
+      In a Secure Shell connection, set <b>SSH relay server options</b> to:
+    </p>
+    <p><code id="agent-option"></code> <button id="copy-option">Copy</button></p>
+
+    <h2>Your keys</h2>
+    <ul id="keys"></ul>
+
+    <h2>Add a key</h2>
+    <input id="name" type="text" placeholder="Name, e.g. yubikey-5c"
+           autocomplete="off" spellcheck="false" />
+    <fieldset>
+      <legend>Where to keep the private key</legend>
+      <label>
+        <input type="radio" name="kind" value="security-key" checked />
+        <b>Security key</b> (YubiKey, Titan, …): the private key never leaves
+        it.
+      </label>
+      <label class="sub">
+        <input id="resident" type="checkbox" />
+        Also store the key <i>on</i> the security key, as a <i>discoverable
+        credential</i> (also called a <i>resident key</i>), so you can import
+        it on another computer with just the security key.  Uses one of its
+        slots, usually needs its PIN, and needs a FIDO2 security key.
+      </label>
+      <label>
+        <input type="radio" name="kind" value="passkey" />
+        <b>Passkey</b>: kept by a passkey provider (Google Password Manager,
+        iCloud Keychain, Windows Hello, a password manager or your phone),
+        which may sync it between your devices.
+      </label>
+    </fieldset>
+    <label>
+      <input id="verify" type="checkbox" />
+      Require a PIN or fingerprint for every login, not just a touch.  Servers
+      enforce it, and so does the security key if it supports that (the key
+      list says which).
+    </label>
+    <button id="create">Create key</button>
+    <button id="import">Import a discoverable key</button>
+    <p id="status" class="status" role="status"></p>
+    <p class="note">
+      Chrome's dialog may still offer other places to save the key; the list
+      above shows where each key really went.  Add a key's public key to
+      <code>~/.ssh/authorized_keys</code> on your servers (OpenSSH 8.4 or
+      newer).
+    </p>
+
+    <h2>Advanced security settings</h2>
+    <p class="note">Kept on this computer only, never synced.</p>
+    <label>
+      <input id="allowDevSecureShell" type="checkbox" />
+      Also accept requests from <b>Secure Shell (dev)</b>
+      (<code>algkcnfjnajfhgimadimbjhmpaeohhln</code>), Secure Shell's
+      development channel.  Leave off unless you use it.
+    </label>
+    <label>
+      <input id="allowUnrecognized" type="checkbox" />
+      Offer to sign <b>unrecognized data</b>: requests that are neither an SSH
+      login nor a file signature.  Off: they're refused without asking.
+    </label>
+
+    <h2>Where do my keys live?</h2>
+    <dl>
+      <dt>Security key</dt>
+      <dd>
+        The private key never leaves the security key.  When the key is
+        created, the security key hands back a <i>credential ID</i>: the
+        private key wrapped (encrypted) with a secret that only that security
+        key has.  This extension stores the credential ID and the public key
+        in your Chrome profile, synced to your other computers if Chrome sync
+        is on.  Logging in needs both that data and the physical security
+        key; neither works alone.  If you lose the stored data, create a new
+        key.
+      </dd>
+      <dt>Security key, discoverable credential (resident key)</dt>
+      <dd>
+        The private key is stored in one of the security key's own slots.
+        Works as above, and on a new computer <b>Import a discoverable key</b>
+        recovers it from the security key alone.  Remove it with the security
+        key's tools (e.g. <code>ykman fido credentials delete</code>).
+      </dd>
+      <dt>Passkey</dt>
+      <dd>
+        The passkey provider holds the private key: Google Password Manager
+        and iCloud Keychain sync it across your devices, Windows Hello keeps
+        it on one device.  Anyone who can unlock the provider can use it.
+        Convenient; a hardware security key is stronger because its keys
+        can't be copied.  Import works here too.
+      </dd>
+    </dl>
+    <p>
+      In every case this extension stores only public data, never a private
+      key, and sends nothing anywhere except signatures to the servers you log
+      in to.  Since synced data could be tampered with (e.g. through a
+      compromised account), a key synced from another computer shows as
+      <i>not verified</i> until you click <b>Verify</b> and confirm with its
+      security key or passkey.  Verify a key before adding its public key to
+      your servers.
+    </p>
+  </body>
+</html>
