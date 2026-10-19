@@ -122,7 +122,7 @@ ctx.on('page', async (page) => {
   }
   try {
     if (first) {
-      // Switch to the Show confirmation level, from the window itself.
+      // Switch this key to the Show level, from the window itself.
       await page.selectOption('#level', 'show');
     }
     // Click Continue (by then the authenticator is there).
@@ -226,24 +226,30 @@ fs.writeFileSync(authKeys, lines['touch-key'] + '\n');
 await login('TOUCH_KEY');
 console.log('logged in with touch-key');
 
-/** @return {!Promise<string>} The confirmation level setting. */
-const confirmationLevel = () => options.evaluate(async () =>
-  (await chrome.storage.local.get('settings')).settings?.confirmation);
-
-// The first touch window switched to the Show level.
-if (await confirmationLevel() !== 'show') {
-  throw new Error('the Show level was not saved');
+// The first touch window switched touch-key (only) to the Show level.
+const levels = await options.evaluate(async () => {
+  const keys = await (await import('./keys.js')).loadKeys();
+  const {settings} = await chrome.storage.local.get('settings');
+  return {
+    keys: Object.fromEntries(
+        keys.map((key) => [key.comment, key.confirmation ?? null])),
+    default: settings?.confirmation ?? 'review',
+  };
+});
+if (levels.keys['touch-key'] !== 'show' || levels.keys['pin-key'] !== null ||
+    levels.default !== 'review') {
+  throw new Error(`confirmation levels: ${JSON.stringify(levels)}`);
 }
 
-fs.writeFileSync(authKeys, lines['pin-key'] + '\n');
-await login('PIN_KEY');
-console.log('logged in with pin-key (verify-required)');
-
-// Then Silent, from Manage keys and settings.
+// The default for other keys: Silent, from Manage keys and settings.
 await options.selectOption('#confirmation', 'silent');
 await options.waitForFunction(async () =>
   (await chrome.storage.local.get('settings')).settings?.confirmation ===
       'silent');
+
+fs.writeFileSync(authKeys, lines['pin-key'] + '\n');
+await login('PIN_KEY');
+console.log('logged in with pin-key (verify-required)');
 
 // Through a forwarded agent: log in again from the server.  OpenSSH clients
 // before 10.3 refuse webauthn signatures from an agent ("returned incorrect
@@ -268,22 +274,23 @@ const check = (ok, shown) => {
 if (signWindows.length < 4) {
   throw new Error(`expected 4+ touch windows, got ${signWindows.length}`);
 }
-// Review, then Show.
-for (const [i, shown] of signWindows.slice(0, 2).entries()) {
+// touch-key: Review, then (the forwarded run's own login) Show.
+for (const [i, shown] of [[0, signWindows[0]], [2, signWindows[2]]]) {
   const {facts} = shown;
   check(facts?.['Requested by'] === 'Secure Shell (dev)' &&
         facts['Action'] === 'Log in' && facts['As user'] === user &&
         facts['Server'] === `${hostKeyFp} (verified)` &&
         facts['Route'] === 'Direct connection' &&
+        facts['With key'].startsWith('touch-key ') &&
         shown.mustContinue === (i === 0) && !shown.warning &&
         shown.title === `Log in as ${user} · ${hostKeyFp} (verified)`, shown);
 }
 console.log('direct login touch windows:', JSON.stringify(signWindows[0]));
-// Then Silent (the forwarded run's own login): no Continue.
-check(!signWindows[2].mustContinue, signWindows[2]);
+// pin-key, with the default level: Silent, no Continue.
+check(!signWindows[1].mustContinue, signWindows[1]);
 // Only Show showed the request beside the prompt.
 if (detailsWindows.length !== 1 || !detailsWindows.every(({facts}) =>
-  facts?.['As user'] === user &&
+  facts?.['As user'] === user && facts['With key'].startsWith('touch-key ') &&
     facts['Server'] === `${hostKeyFp} (verified)`)) {
   throw new Error(`details windows: ${JSON.stringify(detailsWindows)}`);
 }

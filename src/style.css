@@ -93,6 +93,11 @@ dd {
   padding: 0 1em;
 }
 
+#keys .level {
+  display: inline;
+  margin: 0 0.6em;
+}
+
 #keys .unverified {
   display: block;
   font-weight: bold;

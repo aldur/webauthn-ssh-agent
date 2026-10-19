@@ -10,7 +10,9 @@
 import {handleRequest} from './agent.js';
 import {SessionBindings} from './binding.js';
 import {callerName} from './callers.js';
-import {WEBAUTHN_TIMEOUT_MS, keyBlob, loadKeys} from './keys.js';
+import {
+  WEBAUTHN_TIMEOUT_MS, confirmationFor, keyBlob, loadKeys,
+} from './keys.js';
 import {Decision, assess} from './policy.js';
 import {loadSettings} from './settings.js';
 
@@ -309,8 +311,10 @@ function serve(port, caller, early) {
     sign: async (identity, data) => {
       // Settings may have changed since the connection started (e.g. in a
       // touch window).
-      const {decision, reason, fields} =
-          await assess(data, connection.bindings, await loadSettings());
+      const settings = await loadSettings();
+      const confirmation = await confirmationFor(identity.key, settings);
+      const {decision, reason, fields} = await assess(
+          data, connection.bindings, {...settings, confirmation});
       if (decision === Decision.REFUSE) {
         throw new Error(`refused: ${reason}`);
       }

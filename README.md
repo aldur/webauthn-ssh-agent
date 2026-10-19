@@ -26,10 +26,11 @@ unpacked** the folder.
    Enter), and touch your key.
 
 For direct logins to a verified server, you can choose how much to see: the
-**Confirmation** level, in Manage keys and settings or in that window.
+**Confirmation** level, for each key (synced with it) or as a default.
 **Review** (the default) shows the request and waits for Continue, **Show**
 opens the security key or passkey prompt right away with the request beside
-it, and **Silent** only shows the prompt.  Other requests are always reviewed.
+it, and **Silent** only shows the prompt.  A key's own level applies once
+it's verified on this computer.  Other requests are always reviewed.
 
 Agent forwarding (`ssh -A`) works, with an extra confirmation per login.  The
 `ssh` on the server you forward from must be OpenSSH 10.3+: older versions

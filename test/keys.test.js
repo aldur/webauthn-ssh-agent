@@ -114,6 +114,34 @@ test('validateKey refuses anything malformed', async () => {
       'x ssh-rsa AAAA');
 });
 
+test('a key\'s own confirmation level, for keys verified here', async () => {
+  const {confirmationFor, loadKeys, setKeyConfirmation, validateKey} =
+      await import('../src/keys.js');
+  assert.equal(validateKey(storedKey('a', 1, {confirmation: 'loud'}),
+                           [ORIGIN]), null);
+  const {sync, local} = fakeStorage();
+  sync['key:a'] = storedKey('a', 1);
+  const settings = {confirmation: 'review'};
+
+  let [key] = await loadKeys();
+  await setKeyConfirmation(key, 'silent');
+  [key] = await loadKeys();
+  assert.equal(key.confirmation, 'silent');
+  // Not verified on this computer (only synced): the default applies.
+  assert.equal(await confirmationFor(key, settings), 'review');
+
+  // Verified here: its own level applies.
+  const {sha256} = await import('../src/keys.js');
+  local['verified:a'] = toBase64Url(await sha256(JSON.stringify(
+      [key.credentialId, key.publicKey, key.application, key.verify])));
+  assert.equal(await confirmationFor(key, settings), 'silent');
+  await setKeyConfirmation(key, null);
+  [key] = await loadKeys();
+  assert.equal(await confirmationFor(key, settings), 'review');
+  delete globalThis.chrome;
+  delete globalThis.location;
+});
+
 test('synced keys are unverified until checked on this computer', async () => {
   const {isVerified, loadKeys} = await import('../src/keys.js');
   const {sync} = fakeStorage();

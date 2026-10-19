@@ -32,6 +32,7 @@
  */
 
 import {recoverPublicKeys, verifySignature} from './p256.js';
+import {Confirmation} from './settings.js';
 import {cleanName, utf8Prefix} from './text.js';
 import {
   authorizedKeysLine, concat, decodeDerEcdsaSignature, equalBytes,
@@ -96,6 +97,7 @@ export const Kind = {
  * discoverable credential.  verify is whether every use needs user
  * verification; verifyEnforcedByKey whether the authenticator itself
  * confirmed it enforces that (CTAP credProtect), not just the servers.
+ * confirmation is the key's own confirmation level, if not the default.
  *
  * @typedef {{
  *   credentialId: string,
@@ -107,6 +109,7 @@ export const Kind = {
  *   resident: boolean,
  *   verify: boolean,
  *   verifyEnforcedByKey: (boolean|undefined),
+ *   confirmation: (!Confirmation|undefined),
  * }}
  */
 export let StoredKey;
@@ -191,7 +194,8 @@ export function validateKey(raw, applications) {
       !Number.isFinite(raw.created) || typeof raw.resident !== 'boolean' ||
       typeof raw.verify !== 'boolean' ||
       ![undefined, ...Object.values(Kind)].includes(raw.kind) ||
-      ![undefined, true, false].includes(raw.verifyEnforcedByKey)) {
+      ![undefined, true, false].includes(raw.verifyEnforcedByKey) ||
+      ![undefined, ...Object.values(Confirmation)].includes(raw.confirmation)) {
     return null;
   }
   let point;
@@ -213,6 +217,7 @@ export function validateKey(raw, applications) {
     resident: raw.resident,
     verify: raw.verify,
     verifyEnforcedByKey: raw.verifyEnforcedByKey,
+    confirmation: raw.confirmation,
   };
 }
 
@@ -292,6 +297,44 @@ export async function isVerified(key) {
 async function addKey(key) {
   await chrome.storage.sync.set({[STORAGE_PREFIX + key.credentialId]: key});
   await recordVerified(key);
+}
+
+/**
+ * Set a key's own confirmation level (synced with it), or go back to the
+ * default.
+ *
+ * @param {!StoredKey} key
+ * @param {?Confirmation} confirmation Null for the default.
+ * @return {!Promise<void>}
+ */
+export async function setKeyConfirmation(key, confirmation) {
+  if (confirmation !== null &&
+      !Object.values(Confirmation).includes(confirmation)) {
+    throw new Error(`invalid confirmation level ${confirmation}`);
+  }
+  const name = STORAGE_PREFIX + key.credentialId;
+  const {origin, hostname} = globalThis.location;
+  const stored = validateKey(
+      (await chrome.storage.sync.get(name))[name], [origin, hostname]);
+  if (!stored) {
+    throw new Error('no such key');
+  }
+  stored.confirmation = confirmation ?? undefined;
+  await chrome.storage.sync.set({[name]: stored});
+}
+
+/**
+ * The confirmation level for a key.  Its own level is synced, so it's only
+ * trusted for keys verified on this computer: a compromised account mustn't
+ * be able to loosen it.
+ *
+ * @param {!StoredKey} key
+ * @param {{confirmation: !Confirmation}} settings This computer's settings.
+ * @return {!Promise<!Confirmation>}
+ */
+export async function confirmationFor(key, settings) {
+  return key.confirmation && await isVerified(key) ?
+      key.confirmation : settings.confirmation;
 }
 
 /**

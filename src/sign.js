@@ -10,9 +10,11 @@
  * it; with Show, a details window beside it shows the request.
  */
 
-import {sign} from './keys.js';
+import {
+  confirmationFor, isVerified, setKeyConfirmation, sign,
+} from './keys.js';
 import {showRequest} from './request-view.js';
-import {loadSettings, saveSetting} from './settings.js';
+import {loadSettings} from './settings.js';
 
 /** Size of the details window, in pixels. */
 const DETAILS_WIDTH = 440;
@@ -121,12 +123,15 @@ if (!request) {
     trySign(request);
   } else {
     showRequest(request);
-    if (request.decision === 'ask') {
-      // The kind of request the confirmation level applies to: offer it.
-      $('level').value = (await loadSettings()).confirmation;
-      $('level').onchange = () => saveSetting('confirmation', $('level').value);
+    showContinue();
+    // The kind of request the confirmation level applies to: offer to set
+    // this key's (only used once the key is verified on this computer).
+    if (request.decision === 'ask' && await isVerified(request.key)) {
+      $('level').value =
+          await confirmationFor(request.key, await loadSettings());
+      $('level').onchange =
+          () => setKeyConfirmation(request.key, $('level').value);
       $('level-label').classList.remove('hidden');
     }
-    showContinue();
   }
 }

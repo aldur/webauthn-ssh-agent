@@ -6,7 +6,7 @@
 
 import {
   Kind, createKey, deleteKey, describeKey, importKey, isVerified,
-  keyAuthorizedKeysLine, loadKeys, verifyKey,
+  keyAuthorizedKeysLine, loadKeys, setKeyConfirmation, verifyKey,
 } from './keys.js';
 import {loadSettings, saveSetting} from './settings.js';
 
@@ -15,6 +15,40 @@ const $ = (id) => document.getElementById(id);
 /** @param {string} message */
 function setStatus(message) {
   $('status').textContent = message;
+}
+
+/** The confirmation levels, as shown in dropdowns. */
+const LEVELS = {
+  review: 'Review',
+  show: 'Show',
+  silent: 'Silent',
+};
+
+/**
+ * @param {!Object} key A StoredKey.
+ * @param {boolean} verified Whether this computer vouches for the key.
+ * @return {!Element} The key's confirmation level dropdown.
+ */
+function renderLevel(key, verified) {
+  const select = document.createElement('select');
+  select.title = 'Confirmation for direct logins to a verified server';
+  const option = (value, text) => {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = text;
+    return o;
+  };
+  select.append(
+      option('', `Default (${LEVELS[$('confirmation').value]})`),
+      ...Object.entries(LEVELS).map(([value, text]) => option(value, text)));
+  select.value = key.confirmation ?? '';
+  select.onchange = () => setKeyConfirmation(key, select.value || null);
+  if (!verified) {
+    // Its own level only applies once verified on this computer.
+    select.disabled = true;
+    select.title = 'Verify the key to set its confirmation level';
+  }
+  return select;
 }
 
 /**
@@ -67,7 +101,10 @@ function renderKey(key, verified) {
         `Copied the public key of "${key.comment}", which is not verified: ` +
             'click Verify first to be sure it is really yours.');
   };
-  li.append(remove, ' ', name, details);
+  const level = document.createElement('label');
+  level.className = 'level';
+  level.append('Confirmation: ', renderLevel(key, verified));
+  li.append(remove, ' ', name, details, level);
 
   if (verified) {
     li.append(copy);
@@ -190,6 +227,7 @@ for (const name of ['allowUnrecognized', 'allowDevSecureShell']) {
   $(name).onchange = () => saveSetting(name, $(name).checked);
 }
 $('confirmation').value = settings.confirmation;
+// (Saving refreshes the keys, which show the default, via onChanged.)
 $('confirmation').onchange =
     () => saveSetting('confirmation', $('confirmation').value);
 
