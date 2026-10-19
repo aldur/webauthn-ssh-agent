@@ -80,13 +80,18 @@
       login nor a file signature.  Off: they're refused without asking.
     </label>
     <label>
-      <input id="skipConfirmation" type="checkbox" />
-      <b>Skip the confirmation</b> for direct logins to a verified server: go
-      straight to the security key or passkey prompt, with the request shown
-      in a window beside it.
-      Requests with a warning (through a forwarded agent, to an unverified
-      server, or not a login) still need Continue.
+      <b>Confirmation</b> for direct logins to a verified server:
+      <select id="confirmation">
+        <option value="review">Review: show the request, wait for Continue</option>
+        <option value="show">Show: show the request beside the prompt</option>
+        <option value="silent">Silent: only the prompt</option>
+      </select>
     </label>
+    <p class="note">
+      All of them need the security key or passkey's confirmation.  Requests
+      with a warning (through a forwarded agent, to an unverified server, or
+      not a login) are always reviewed.
+    </p>
 
     <h2>Where do my keys live?</h2>
     <dl>

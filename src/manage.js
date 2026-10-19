@@ -185,11 +185,13 @@ if (!globalThis.PublicKeyCredential) {
 
 // Security settings: kept on this computer only.
 const settings = await loadSettings();
-for (const name of
-         ['allowUnrecognized', 'allowDevSecureShell', 'skipConfirmation']) {
+for (const name of ['allowUnrecognized', 'allowDevSecureShell']) {
   $(name).checked = settings[name];
   $(name).onchange = () => saveSetting(name, $(name).checked);
 }
+$('confirmation').value = settings.confirmation;
+$('confirmation').onchange =
+    () => saveSetting('confirmation', $('confirmation').value);
 
 // Keys may change elsewhere, e.g. on another synced computer.
 chrome.storage.onChanged.addListener(load);

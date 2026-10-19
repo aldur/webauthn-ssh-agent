@@ -8,7 +8,8 @@
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -47,8 +48,9 @@ body.sign #continue {
 }
 
 /*
- * While Chrome's prompt covers the touch window, with the confirmation
- * skipped: no text behind it (a details window shows the request).
+ * While Chrome's prompt covers the touch window, for the Show & Silent
+ * levels: no text behind it (with Show, a details window shows the request).
+ * Also until the window knows what to show.
  */
 body.prompting > * {
   visibility: hidden;

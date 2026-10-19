@@ -65,7 +65,7 @@ let credentials = [];
 
 // Every touch window: give it the authenticator & record what it showed.
 const signWindows = [];
-// Details windows, shown beside touch windows that skip the confirmation.
+// Details windows, shown beside touch windows with the Show level.
 const detailsWindows = [];
 ctx.on('page', async (page) => {
   if (!page.url().includes('/src/details.html')) {
@@ -122,13 +122,13 @@ ctx.on('page', async (page) => {
   }
   try {
     if (first) {
-      // Skip the confirmation from now on, from the window itself.
-      await page.check('#skip');
+      // Switch to the Show confirmation level, from the window itself.
+      await page.selectOption('#level', 'show');
     }
     // Click Continue (by then the authenticator is there).
     await page.locator('#continue:not(.hidden)').click({timeout: 5000});
   } catch (e) {
-    // Fine if it signed without Continue (the confirmation was skipped).
+    // Fine if it signed without Continue (Show & Silent levels).
     if (!page.isClosed()) {
       console.log('could not click Continue:', e.message);
     }
@@ -226,15 +226,24 @@ fs.writeFileSync(authKeys, lines['touch-key'] + '\n');
 await login('TOUCH_KEY');
 console.log('logged in with touch-key');
 
-// The first touch window turned on skipping the confirmation.
-if (!await options.evaluate(async () =>
-  (await chrome.storage.local.get('settings')).settings?.skipConfirmation)) {
-  throw new Error('skipping the confirmation was not saved');
+/** @return {!Promise<string>} The confirmation level setting. */
+const confirmationLevel = () => options.evaluate(async () =>
+  (await chrome.storage.local.get('settings')).settings?.confirmation);
+
+// The first touch window switched to the Show level.
+if (await confirmationLevel() !== 'show') {
+  throw new Error('the Show level was not saved');
 }
 
 fs.writeFileSync(authKeys, lines['pin-key'] + '\n');
 await login('PIN_KEY');
 console.log('logged in with pin-key (verify-required)');
+
+// Then Silent, from Manage keys and settings.
+await options.selectOption('#confirmation', 'silent');
+await options.waitForFunction(async () =>
+  (await chrome.storage.local.get('settings')).settings?.confirmation ===
+      'silent');
 
 // Through a forwarded agent: log in again from the server.  OpenSSH clients
 // before 10.3 refuse webauthn signatures from an agent ("returned incorrect
@@ -259,19 +268,21 @@ const check = (ok, shown) => {
 if (signWindows.length < 4) {
   throw new Error(`expected 4+ touch windows, got ${signWindows.length}`);
 }
-for (const [i, shown] of signWindows.slice(0, 3).entries()) {
+// Review, then Show.
+for (const [i, shown] of signWindows.slice(0, 2).entries()) {
   const {facts} = shown;
   check(facts?.['Requested by'] === 'Secure Shell (dev)' &&
         facts['Action'] === 'Log in' && facts['As user'] === user &&
         facts['Server'] === `${hostKeyFp} (verified)` &&
         facts['Route'] === 'Direct connection' &&
-        // Only the first came before skipping the confirmation.
         shown.mustContinue === (i === 0) && !shown.warning &&
         shown.title === `Log in as ${user} · ${hostKeyFp} (verified)`, shown);
 }
 console.log('direct login touch windows:', JSON.stringify(signWindows[0]));
-// The two that skipped the confirmation showed the request beside them.
-if (detailsWindows.length !== 2 || !detailsWindows.every(({facts}) =>
+// Then Silent (the forwarded run's own login): no Continue.
+check(!signWindows[2].mustContinue, signWindows[2]);
+// Only Show showed the request beside the prompt.
+if (detailsWindows.length !== 1 || !detailsWindows.every(({facts}) =>
   facts?.['As user'] === user &&
     facts['Server'] === `${hostKeyFp} (verified)`)) {
   throw new Error(`details windows: ${JSON.stringify(detailsWindows)}`);

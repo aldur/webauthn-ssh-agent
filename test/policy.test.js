@@ -43,12 +43,17 @@ test('a direct login to the bound server', async () => {
   }
 });
 
-test('skipping the confirmation, for direct logins only', async () => {
-  const skip = {allowUnrecognized: false, skipConfirmation: true};
+test('confirmation levels, for direct logins only', async () => {
   const host = await makeHostKey('ed25519');
   const {bindings, sessionId} = await bound(host);
-  assert.equal((await assess(login(sessionId), bindings, skip)).decision,
-               Decision.SIGN);
+  for (const [confirmation, decision] of [
+    ['review', Decision.ASK], ['show', Decision.SHOW],
+    ['silent', Decision.SILENT]]) {
+    assert.equal((await assess(login(sessionId), bindings,
+                               {allowUnrecognized: false, confirmation}))
+                     .decision, decision);
+  }
+  const skip = {allowUnrecognized: false, confirmation: 'silent'};
   const forwarded = await bound(host, true);
   assert.equal((await assess(login(new Uint8Array(32)), forwarded.bindings,
                              skip)).decision, Decision.CONFIRM);

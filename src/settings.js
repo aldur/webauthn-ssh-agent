@@ -8,10 +8,25 @@
  */
 
 /**
+ * How much to show for direct logins to a verified server.  Other requests
+ * always show & wait for Continue.
+ *
+ * @enum {string}
+ */
+export const Confirmation = Object.freeze({
+  /** Show the request, & open the prompt on Continue. */
+  REVIEW: 'review',
+  /** Open the prompt right away, with the request in a window beside it. */
+  SHOW: 'show',
+  /** Only the security key or passkey prompt. */
+  SILENT: 'silent',
+});
+
+/**
  * @typedef {{
  *   allowUnrecognized: boolean,
  *   allowDevSecureShell: boolean,
- *   skipConfirmation: boolean,
+ *   confirmation: !Confirmation,
  * }}
  */
 export let Settings;
@@ -22,12 +37,20 @@ export const DEFAULT_SETTINGS = Object.freeze({
   allowUnrecognized: false,
   /** Accept connections from Secure Shell's dev channel. */
   allowDevSecureShell: false,
-  /**
-   * For direct logins to a verified server, go straight to the security key
-   * or passkey prompt, without Continue.
-   */
-  skipConfirmation: false,
+  /** For direct logins to a verified server. */
+  confirmation: Confirmation.REVIEW,
 });
+
+/**
+ * @param {string} name
+ * @param {*} value
+ * @return {boolean} Whether value is valid for the setting.
+ */
+function isValid(name, value) {
+  return name === 'confirmation' ?
+      Object.values(Confirmation).includes(value) :
+      typeof value === typeof DEFAULT_SETTINGS[name];
+}
 
 /** @return {!Promise<!Settings>} */
 export async function loadSettings() {
@@ -35,21 +58,25 @@ export async function loadSettings() {
   const stored = items.settings ?? {};
   const settings = {...DEFAULT_SETTINGS};
   for (const name of Object.keys(DEFAULT_SETTINGS)) {
-    if (typeof stored[name] === 'boolean') {
+    if (isValid(name, stored[name])) {
       settings[name] = stored[name];
     }
+  }
+  // Before the confirmation levels, there was a checkbox.
+  if (stored.confirmation === undefined && stored.skipConfirmation === true) {
+    settings.confirmation = Confirmation.SHOW;
   }
   return settings;
 }
 
 /**
  * @param {string} name
- * @param {boolean} value
+ * @param {boolean|string} value
  * @return {!Promise<void>}
  */
 export async function saveSetting(name, value) {
-  if (!(name in DEFAULT_SETTINGS)) {
-    throw new Error(`unknown setting ${name}`);
+  if (!(name in DEFAULT_SETTINGS) || !isValid(name, value)) {
+    throw new Error(`invalid setting ${name}: ${value}`);
   }
   const settings = await loadSettings();
   settings[name] = value;

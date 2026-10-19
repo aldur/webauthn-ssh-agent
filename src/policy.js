@@ -11,6 +11,7 @@
  */
 
 import {SessionBindings} from './binding.js';
+import {Confirmation} from './settings.js';
 import {describeSignData, equalBytes, fingerprint} from './ssh.js';
 import {displayText} from './text.js';
 
@@ -24,8 +25,10 @@ export const Decision = {
   CONFIRM: 'confirm',
   /** Ask. */
   ASK: 'ask',
-  /** Go straight to the touch prompt (the user turned off asking). */
-  SIGN: 'sign',
+  /** Open the touch prompt right away, showing the request beside it. */
+  SHOW: 'show',
+  /** Only open the touch prompt. */
+  SILENT: 'silent',
 };
 
 /**
@@ -45,7 +48,7 @@ export let Fields;
 /**
  * @param {!Uint8Array} data The data to sign.
  * @param {!SessionBindings} bindings The connection's session bindings.
- * @param {{allowUnrecognized: boolean, skipConfirmation: boolean}} settings
+ * @param {{allowUnrecognized: boolean, confirmation: string}} settings
  * @return {!Promise<{decision: !Decision, reason: (string|undefined),
  *                    fields: (!Fields|undefined)}>}
  */
@@ -88,10 +91,11 @@ export async function assess(data, bindings, settings) {
       route,
     };
     if (last && !bindings.forwarded) {
-      return {
-        decision: settings.skipConfirmation ? Decision.SIGN : Decision.ASK,
-        fields,
-      };
+      const decision = {
+        [Confirmation.SHOW]: Decision.SHOW,
+        [Confirmation.SILENT]: Decision.SILENT,
+      }[settings.confirmation] ?? Decision.ASK;
+      return {decision, fields};
     }
     fields.warning = bindings.forwarded ?
         'A server you forwarded your agent to is asking to log in ' +

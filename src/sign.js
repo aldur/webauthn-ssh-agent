@@ -3,15 +3,16 @@
 /**
  * @fileoverview The window that asks the user to approve one signature.
  *
- * Normally the user reads the request, then clicks Continue to open
- * Chrome's security key or passkey prompt, which covers this window.  With
- * the confirmation skipped, the prompt opens right away: then this window
- * shows nothing behind it, and a details window beside it shows the request.
+ * Normally (and always for requests with a warning) the user reads the
+ * request, then clicks Continue to open Chrome's security key or passkey
+ * prompt, which covers this window.  With the Show & Silent confirmation
+ * levels, the prompt opens right away, and this window shows nothing behind
+ * it; with Show, a details window beside it shows the request.
  */
 
 import {sign} from './keys.js';
 import {showRequest} from './request-view.js';
-import {saveSetting} from './settings.js';
+import {loadSettings, saveSetting} from './settings.js';
 
 /** Size of the details window, in pixels. */
 const DETAILS_WIDTH = 440;
@@ -53,12 +54,14 @@ function detailsBounds() {
  */
 async function trySign(request) {
   $('continue').classList.add('hidden');
-  if (request.decision === 'sign') {
-    // The prompt is about to cover this window, unread: show nothing here,
-    // and the request beside it instead.
+  if (request.decision === 'show' || request.decision === 'silent') {
+    // The prompt is about to cover this window, unread: show nothing here
+    // (and with Show, the request beside it instead).
     document.body.classList.add('prompting');
-    await chrome.runtime.sendMessage(
-        {type: 'show-details', id, bounds: detailsBounds()});
+    if (request.decision === 'show') {
+      await chrome.runtime.sendMessage(
+          {type: 'show-details', id, bounds: detailsBounds()});
+    }
   } else {
     const device =
         request.key.kind === 'passkey' ? 'passkey' : 'security key';
@@ -74,6 +77,11 @@ async function trySign(request) {
     finish({signature: Array.from(signature)});
   } catch (e) {
     // E.g. the user dismissed Chrome's dialog, or it timed out.
+    if (request.decision === 'silent') {
+      // Say what failed.
+      showRequest(request);
+      request.decision = 'shown';
+    }
     document.body.classList.remove('prompting');
     $('status').textContent = `Not signed: ${e.message}`;
     $('continue').textContent = 'Try again';
@@ -84,7 +92,6 @@ async function trySign(request) {
 /**
  * Only start WebAuthn when the user has read the request: Chrome's security
  * key & passkey dialogs cover this window.
- *
  */
 function showContinue() {
   $('continue').classList.remove('hidden');
@@ -98,21 +105,27 @@ $('deny').onclick = () =>
 
 const request =
     await chrome.runtime.sendMessage({type: 'get-sign-request', id});
+// Blank until we know there's something to show.
+if (request?.decision !== 'silent') {
+  document.body.classList.remove('prompting');
+}
 if (!request) {
   $('status').textContent = 'This request is no longer pending.';
 } else {
-  showRequest(request);
-
   $('continue').onclick = () => trySign(request);
-  if (request.decision === 'sign') {
-    // The user chose to skip the confirmation for such requests.
+  if (request.decision === 'silent') {
+    // The user chose to see only the security key or passkey prompt.
+    trySign(request);
+  } else if (request.decision === 'show') {
+    showRequest(request);
     trySign(request);
   } else {
+    showRequest(request);
     if (request.decision === 'ask') {
-      // The kind of request the setting applies to: offer it here.
-      $('skip-label').classList.remove('hidden');
-      $('skip').onchange = () =>
-        saveSetting('skipConfirmation', $('skip').checked);
+      // The kind of request the confirmation level applies to: offer it.
+      $('level').value = (await loadSettings()).confirmation;
+      $('level').onchange = () => saveSetting('confirmation', $('level').value);
+      $('level-label').classList.remove('hidden');
     }
     showContinue();
   }
