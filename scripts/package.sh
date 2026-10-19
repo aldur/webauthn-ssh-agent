@@ -5,7 +5,10 @@
 #
 #   package.sh <output.zip>          Dev build for "Load unpacked": keeps the
 #                                    manifest "key", so the extension ID is
-#                                    always balijighililfegobipoacjgpmpckepg.
+#                                    always balijighililfegobipoacjgpmpckepg,
+#                                    & is named "… (Dev)", with a black &
+#                                    white icon, to tell it from the Store
+#                                    version.
 #   package.sh --store <output.zip>  Chrome Web Store build: without "key"
 #                                    (the Store rejects it & assigns its own
 #                                    ID).
@@ -31,10 +34,13 @@ trap 'rm -rf "$tmp"' EXIT
 
 cp -r manifest.json LICENSE README.md PRIVACY.md src "$tmp/"
 mkdir "$tmp/icons"
-cp icons/*.png "$tmp/icons/"
 filter=.
 if $store; then
+  cp icons/*.png "$tmp/icons/"
   filter="$filter | del(.key)"
+else
+  cp icons/dev/*.png "$tmp/icons/"
+  filter="$filter | .name += \" (Dev)\""
 fi
 if [[ -n $version ]]; then
   filter="$filter | .version = \$version"

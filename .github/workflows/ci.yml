@@ -117,8 +117,9 @@ jobs:
           Most people should install it from the
           [Chrome Web Store](https://chromewebstore.google.com/detail/webauthn-ssh-agent/nkcmhjokohmhogfaanphnnfdjfplkklk).
 
-          * \`${NAME}.zip\`: build for "Load unpacked", with a fixed
-            extension ID (balijighililfegobipoacjgpmpckepg).
+          * \`${NAME}.zip\`: "WebAuthn SSH Agent (Dev)", for "Load
+            unpacked", with a fixed extension ID
+            (balijighililfegobipoacjgpmpckepg) & a black & white icon.
           * \`${NAME}-store.zip\`: for uploading to the Chrome Web Store
             (no manifest "key").
 
