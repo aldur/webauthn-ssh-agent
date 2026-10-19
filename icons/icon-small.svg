@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- SPDX-License-Identifier: BSD-3-Clause -->
+  <!-- icon.svg simplified for 16 & 32 px: no grid or glow, bolder lines. -->
+  <rect width="128" height="128" rx="26" fill="#0b0e26"/>
+
+  <g fill="#22e6ff">
+    <circle cx="40" cy="60" r="25"/>
+    <circle cx="68" cy="44" r="32"/>
+    <circle cx="96" cy="64" r="23"/>
+    <rect x="15" y="60" width="104" height="38" rx="19"/>
+  </g>
+  <g fill="#0b0e26">
+    <circle cx="40" cy="60" r="15"/>
+    <circle cx="68" cy="44" r="22"/>
+    <circle cx="96" cy="64" r="13"/>
+    <rect x="25" y="70" width="84" height="18" rx="9"/>
+  </g>
+
+  <g fill="#ff2fd6">
+    <path fill-rule="evenodd"
+          d="M40 58 L58 68.5 V89.5 L40 100 L22 89.5 V68.5 Z
+             M40 72 L47 76 V82 L40 86 L33 82 V76 Z"/>
+    <path d="M56 72 H118 L113 84 H106 V98 H94 V84 H86 V93 H74 V84 H56 Z"/>
+  </g>
+</svg>

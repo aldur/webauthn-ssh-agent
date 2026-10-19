@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- SPDX-License-Identifier: BSD-3-Clause -->
+  <defs>
+    <radialGradient id="bg" cx="0.5" cy="0.4" r="0.75">
+      <stop offset="0" stop-color="#1b1f45"/>
+      <stop offset="1" stop-color="#05060f"/>
+    </radialGradient>
+    <pattern id="grid" width="16" height="16" patternUnits="userSpaceOnUse">
+      <path d="M16 0 H0 V16" fill="none" stroke="#2a3a7a" stroke-width="1"
+            opacity="0.55"/>
+    </pattern>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <clipPath id="tile">
+      <rect x="4" y="4" width="120" height="120" rx="26"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#tile)">
+    <rect width="128" height="128" fill="url(#bg)"/>
+    <rect width="128" height="128" fill="url(#grid)"/>
+  </g>
+  <rect x="5" y="5" width="118" height="118" rx="25" fill="none"
+        stroke="#3a4bb0" stroke-width="2" opacity="0.8"/>
+
+  <!-- Cloud: a neon outline (outer shape in cyan, inner shape in the
+       background colour). -->
+  <g filter="url(#glow)">
+    <g fill="#22e6ff">
+      <circle cx="42" cy="62" r="22"/>
+      <circle cx="68" cy="47" r="29"/>
+      <circle cx="94" cy="65" r="20"/>
+      <rect x="20" y="62" width="94" height="30" rx="15"/>
+    </g>
+    <g fill="#0b0e26">
+      <circle cx="42" cy="62" r="17"/>
+      <circle cx="68" cy="47" r="24"/>
+      <circle cx="94" cy="65" r="15"/>
+      <rect x="25" y="67" width="84" height="20" rx="10"/>
+    </g>
+  </g>
+
+  <!-- Circuit trace from the key into the cloud. -->
+  <g stroke="#22e6ff" stroke-width="2.5" fill="none" filter="url(#glow)">
+    <path d="M68 70 V54 H80 V44"/>
+  </g>
+  <circle cx="80" cy="42" r="3.5" fill="#22e6ff" filter="url(#glow)"/>
+
+  <!-- Key: hexagonal bow, angular bit, neon magenta. -->
+  <g fill="#ff2fd6" filter="url(#glow)">
+    <path fill-rule="evenodd"
+          d="M44 64 L57 71.5 V86.5 L44 94 L31 86.5 V71.5 Z
+             M44 72.5 L50 76 V82 L44 85.5 L38 82 V76 Z"/>
+    <path d="M56 75 H110 L106 83 H100 V91 H92 V83 H86 V89 H78 V83 H56 Z"/>
+  </g>
+</svg>

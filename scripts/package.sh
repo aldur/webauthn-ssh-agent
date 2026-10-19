@@ -11,5 +11,5 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 out=$(realpath -m "$1")
 rm -f "$out"
-zip -qr "$out" manifest.json LICENSE README.md src
+zip -qr "$out" manifest.json LICENSE README.md icons/*.png src
 echo "$out"
