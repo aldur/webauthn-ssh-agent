@@ -193,4 +193,9 @@ for (const name of
 
 // Keys may change elsewhere, e.g. on another synced computer.
 chrome.storage.onChanged.addListener(load);
+
+// The name says "(Dev)" for the Load-unpacked build.
+const {name, version} = chrome.runtime.getManifest();
+$('version').textContent = `${name}, version ${version}`;
+
 load();
