@@ -81,6 +81,10 @@ scripts/package.sh out.zip     # --store: Chrome Web Store build
 node scripts/store-assets.mjs  # Store images
 ```
 
+To release, change the version in `manifest.json` and push to `main`: CI
+publishes the release, tagged `v<version>`, with both zips.  Other builds of
+`main` are versioned `<last version>.<CI run number>`.
+
 [Secure Shell]: https://chromewebstore.google.com/detail/iodihamcpbpeioajjeobimgagajmlibd
 [Chrome Web Store]: https://chromewebstore.google.com/detail/webauthn-ssh-agent/nkcmhjokohmhogfaanphnnfdjfplkklk
 [releases page]: https://github.com/jlnt/webauthn-ssh-agent/releases
