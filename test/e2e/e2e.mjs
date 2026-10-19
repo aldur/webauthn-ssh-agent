@@ -65,12 +65,31 @@ let credentials = [];
 
 // Every touch window: give it the authenticator & record what it showed.
 const signWindows = [];
+// Details windows, shown beside touch windows that skip the confirmation.
+const detailsWindows = [];
+ctx.on('page', async (page) => {
+  if (!page.url().includes('/src/details.html')) {
+    return;
+  }
+  const shown = {facts: null};
+  detailsWindows.push(shown);
+  while (!shown.facts && !page.isClosed()) {
+    shown.facts = await page.evaluate(() => {
+      const dts = [...document.querySelectorAll('#facts dt')];
+      return dts.length ? Object.fromEntries(dts.map(
+          (dt) => [dt.textContent, dt.nextElementSibling.textContent])) :
+          null;
+    }).catch(() => null);
+    await new Promise((r) => setTimeout(r, 10));
+  }
+});
+
 ctx.on('page', async (page) => {
   if (!page.url().includes('/src/sign.html')) {
     return;
   }
   const shown = {facts: null};
-  signWindows.push(shown);
+  const first = signWindows.push(shown) === 1;
   // Record what it shows (it closes soon after signing): the labelled facts,
   // any warning, & whether the user had to click Continue.
   (async () => {
@@ -85,6 +104,7 @@ ctx.on('page', async (page) => {
           facts: Object.fromEntries(dts.map(
               (dt) => [dt.textContent, dt.nextElementSibling.textContent])),
           warning: document.getElementById('warning').textContent,
+          title: document.title,
           mustContinue: !button.classList.contains('hidden') &&
               button.textContent === 'Continue',
         };
@@ -101,10 +121,17 @@ ctx.on('page', async (page) => {
     await cdp.send('WebAuthn.addCredential', {authenticatorId, credential});
   }
   try {
+    if (first) {
+      // Skip the confirmation from now on, from the window itself.
+      await page.check('#skip');
+    }
     // Click Continue once it's enabled (by then the authenticator is there).
     await page.locator('#continue:not(.hidden)').click({timeout: 5000});
   } catch (e) {
-    console.log('could not click Continue:', e.message);
+    // Fine if it signed without Continue (the confirmation was skipped).
+    if (!page.isClosed()) {
+      console.log('could not click Continue:', e.message);
+    }
   }
 });
 
@@ -199,6 +226,12 @@ fs.writeFileSync(authKeys, lines['touch-key'] + '\n');
 await login('TOUCH_KEY');
 console.log('logged in with touch-key');
 
+// The first touch window turned on skipping the confirmation.
+if (!await options.evaluate(async () =>
+  (await chrome.storage.local.get('settings')).settings?.skipConfirmation)) {
+  throw new Error('skipping the confirmation was not saved');
+}
+
 fs.writeFileSync(authKeys, lines['pin-key'] + '\n');
 await login('PIN_KEY');
 console.log('logged in with pin-key (verify-required)');
@@ -226,16 +259,25 @@ const check = (ok, shown) => {
 if (signWindows.length < 4) {
   throw new Error(`expected 4+ touch windows, got ${signWindows.length}`);
 }
-for (const shown of signWindows.slice(0, 3)) {
+for (const [i, shown] of signWindows.slice(0, 3).entries()) {
   const {facts} = shown;
   check(facts?.['Requested by'] === 'Secure Shell (dev)' &&
         facts['Action'] === 'Log in' && facts['As user'] === user &&
         facts['Server'] === `${hostKeyFp} (verified)` &&
-        facts['Route'] === 'Direct connection' && shown.mustContinue &&
-        !shown.warning, shown);
+        facts['Route'] === 'Direct connection' &&
+        // Only the first came before skipping the confirmation.
+        shown.mustContinue === (i === 0) && !shown.warning &&
+        shown.title === `Log in as ${user} · ${hostKeyFp} (verified)`, shown);
 }
 console.log('direct login touch windows:', JSON.stringify(signWindows[0]));
-// The forwarded ones said so & warned.
+// The two that skipped the confirmation showed the request beside them.
+if (detailsWindows.length !== 2 || !detailsWindows.every(({facts}) =>
+  facts?.['As user'] === user &&
+    facts['Server'] === `${hostKeyFp} (verified)`)) {
+  throw new Error(`details windows: ${JSON.stringify(detailsWindows)}`);
+}
+console.log('details windows:', JSON.stringify(detailsWindows[0]));
+// The forwarded ones said so, warned, & still needed Continue.
 for (const forwarded of signWindows.slice(3)) {
   check(forwarded.facts?.['Server'] === `${hostKeyFp} (verified)` &&
         forwarded.facts['Route'] ===

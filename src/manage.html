@@ -78,6 +78,14 @@
       Offer to sign <b>unrecognized data</b>: requests that are neither an SSH
       login nor a file signature.  Off: they're refused without asking.
     </label>
+    <label>
+      <input id="skipConfirmation" type="checkbox" />
+      <b>Skip the confirmation</b> for direct logins to a verified server: go
+      straight to the security key or passkey prompt, with the request shown
+      in a window beside it.
+      Requests with a warning (through a forwarded agent, to an unverified
+      server, or not a login) still need Continue.
+    </label>
 
     <h2>Where do my keys live?</h2>
     <dl>

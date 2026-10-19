@@ -55,7 +55,10 @@ key didn't confirm it.
 * Every signature first shows the caller, action, user, server and route as
   labelled fields (text from the request is escaped and shortened), and only
   asks for the touch after you click **Continue**: Chrome's own dialog would
-  hide them.
+  hide them; the title bar repeats the essentials.  **Skip the
+  confirmation** (in that window or in Manage keys and settings) goes
+  straight on to the touch for direct logins to a verified server, showing
+  the request in a window beside Chrome's prompt.
 * The agent checks OpenSSH's session binding (`session-bind@openssh.com`): it
   shows the server's verified host key and refuses logins for any other
   session.

@@ -185,7 +185,8 @@ if (!globalThis.PublicKeyCredential) {
 
 // Security settings: kept on this computer only.
 const settings = await loadSettings();
-for (const name of ['allowUnrecognized', 'allowDevSecureShell']) {
+for (const name of
+         ['allowUnrecognized', 'allowDevSecureShell', 'skipConfirmation']) {
   $(name).checked = settings[name];
   $(name).onchange = () => saveSetting(name, $(name).checked);
 }

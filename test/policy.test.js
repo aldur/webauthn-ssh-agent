@@ -43,6 +43,20 @@ test('a direct login to the bound server', async () => {
   }
 });
 
+test('skipping the confirmation, for direct logins only', async () => {
+  const skip = {allowUnrecognized: false, skipConfirmation: true};
+  const host = await makeHostKey('ed25519');
+  const {bindings, sessionId} = await bound(host);
+  assert.equal((await assess(login(sessionId), bindings, skip)).decision,
+               Decision.SIGN);
+  const forwarded = await bound(host, true);
+  assert.equal((await assess(login(new Uint8Array(32)), forwarded.bindings,
+                             skip)).decision, Decision.CONFIRM);
+  assert.equal((await assess(login(new Uint8Array(32)),
+                             new SessionBindings(), skip)).decision,
+               Decision.CONFIRM);
+});
+
 test('a login for another session or server is refused', async () => {
   const host = await makeHostKey('ed25519');
   const other = await makeHostKey('ed25519');

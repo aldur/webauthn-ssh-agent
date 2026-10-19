@@ -40,6 +40,8 @@ const AGENT_MESSAGE_TYPE = 'auth-agent@openssh.com';
  *   fields: !Object,
  *   connection: !Connection,
  *   windowId: (number|undefined),
+ *   detailsWindowId: (number|undefined),
+ *   detailsShown: (function()|undefined),
  *   resolve: function(!Uint8Array),
  *   reject: function(!Error),
  * }>}
@@ -70,7 +72,7 @@ let openedManagePage = false;
  * @param {!Object} key The StoredKey to use.
  * @param {!Uint8Array} data The SSH data to sign.
  * @param {!Connection} connection Where the request came from.
- * @param {string} decision A policy Decision: ask or confirm.
+ * @param {string} decision A policy Decision: ask, confirm or sign.
  * @param {!Object} fields What to show the user (policy Fields).
  * @return {!Promise<!Uint8Array>} The SSH signature.
  */
@@ -85,17 +87,18 @@ function signInWindow(key, data, connection, decision, fields) {
       return;
     }
     const id = crypto.randomUUID();
-    const request = {key, data, caller: connection.caller, decision, fields,
-                     connection, resolve, reject};
+    const request = {id, key, data, caller: connection.caller, decision,
+                     fields, connection, resolve, reject};
     pending.set(id, request);
     /** @param {number} delay How long to leave the window up. */
     const finish = (delay) => {
       clearTimeout(timer);
       pending.delete(id);
-      if (request.windowId !== undefined) {
-        const windowId = request.windowId;
-        setTimeout(
-            () => chrome.windows.remove(windowId).catch(() => {}), delay);
+      for (const windowId of [request.windowId, request.detailsWindowId]) {
+        if (windowId !== undefined) {
+          setTimeout(
+              () => chrome.windows.remove(windowId).catch(() => {}), delay);
+        }
       }
     };
     request.resolve = (signature) => {
@@ -140,17 +143,79 @@ chrome.windows.onRemoved.addListener((windowId) => {
 });
 
 // Messages from our sign window.
+/** How long to wait for the details window to show the request. */
+const DETAILS_TIMEOUT_MS = 3000;
+
+/**
+ * Open the details window, beside the touch window, wait until it shows the
+ * request, and give the focus back to the touch window (WebAuthn needs it).
+ *
+ * @param {!Object} request
+ * @param {*} bounds Where the touch window asked for it.
+ * @return {!Promise<void>}
+ */
+async function showDetails(request, bounds) {
+  if (request.detailsWindowId !== undefined) {
+    return;
+  }
+  const shown = new Promise((resolve) => {
+    request.detailsShown = resolve;
+    setTimeout(resolve, DETAILS_TIMEOUT_MS);
+  });
+  const valid = (n, min, max) => Number.isInteger(n) && n >= min && n <= max;
+  const {left, top, width, height} = bounds ?? {};
+  const win = await chrome.windows.create({
+    url: chrome.runtime.getURL(`src/details.html#${request.id}`),
+    type: 'popup',
+    focused: false,
+    ...(valid(left, -1e5, 1e5) && valid(top, -1e5, 1e5) ? {left, top} : {}),
+    width: valid(width, 200, 2000) ? width : 440,
+    height: valid(height, 200, 2000) ? height : 560,
+  });
+  if (!pending.has(request.id)) {
+    chrome.windows.remove(win.id).catch(() => {});
+    return;
+  }
+  request.detailsWindowId = win.id;
+  await shown;
+  if (request.windowId !== undefined) {
+    await chrome.windows.update(request.windowId, {focused: true});
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (sender.id !== chrome.runtime.id ||
-      !sender.url?.startsWith(chrome.runtime.getURL('src/sign.html'))) {
+  if (sender.id !== chrome.runtime.id) {
     return;
   }
   const request = pending.get(msg?.id);
+  // The details window only gets what it shows.
+  if (sender.url?.startsWith(chrome.runtime.getURL('src/details.html'))) {
+    if (msg.type === 'details-shown') {
+      request?.detailsShown?.();
+      sendResponse(null);
+      return;
+    }
+    const {comment, kind, resident} = request?.key ?? {};
+    sendResponse(msg.type === 'get-request-details' && request ? {
+      caller: request.caller,
+      fields: request.fields,
+      key: {comment, kind, resident},
+    } : null);
+    return;
+  }
+  if (!sender.url?.startsWith(chrome.runtime.getURL('src/sign.html'))) {
+    return;
+  }
   if (!request) {
     sendResponse(null);
     return;
   }
   switch (msg.type) {
+    case 'show-details':
+      showDetails(request, msg.bounds).catch(
+          (e) => console.warn('no details window:', e))
+          .finally(() => sendResponse(null));
+      return true;  // Responds asynchronously.
     case 'get-sign-request':
       sendResponse({
         key: request.key,
@@ -207,7 +272,7 @@ chrome.runtime.onConnectExternal.addListener((port) => {
       port.disconnect();
       return;
     }
-    serve(port, caller, settings, early);
+    serve(port, caller, early);
   }).catch((e) => {
     console.warn('rejected connection:', e);
     port.disconnect();
@@ -219,10 +284,9 @@ chrome.runtime.onConnectExternal.addListener((port) => {
  *
  * @param {!chrome.runtime.Port} port
  * @param {string} caller The client's name, for the user.
- * @param {!Object} settings The Settings.
  * @param {!Array<*>} early Messages that arrived before we were ready.
  */
-function serve(port, caller, settings, early) {
+function serve(port, caller, early) {
   /** @type {!Connection} */
   const connection = {
     caller,
@@ -243,8 +307,10 @@ function serve(port, caller, settings, early) {
   const backend = {
     identities,
     sign: async (identity, data) => {
+      // Settings may have changed since the connection started (e.g. in a
+      // touch window).
       const {decision, reason, fields} =
-          await assess(data, connection.bindings, settings);
+          await assess(data, connection.bindings, await loadSettings());
       if (decision === Decision.REFUSE) {
         throw new Error(`refused: ${reason}`);
       }

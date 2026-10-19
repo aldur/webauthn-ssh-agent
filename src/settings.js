@@ -11,6 +11,7 @@
  * @typedef {{
  *   allowUnrecognized: boolean,
  *   allowDevSecureShell: boolean,
+ *   skipConfirmation: boolean,
  * }}
  */
 export let Settings;
@@ -21,6 +22,11 @@ export const DEFAULT_SETTINGS = Object.freeze({
   allowUnrecognized: false,
   /** Accept connections from Secure Shell's dev channel. */
   allowDevSecureShell: false,
+  /**
+   * For direct logins to a verified server, go straight to the security key
+   * or passkey prompt, without Continue.
+   */
+  skipConfirmation: false,
 });
 
 /** @return {!Promise<!Settings>} */

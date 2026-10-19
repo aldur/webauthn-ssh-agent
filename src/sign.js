@@ -3,11 +3,19 @@
 /**
  * @fileoverview The window that asks the user to approve one signature.
  *
- * The background page decides what to ask & prepares display-safe, labelled
- * facts (see policy.js); this page only shows them, as text.
+ * Normally the user reads the request, then clicks Continue to open
+ * Chrome's security key or passkey prompt, which covers this window.  With
+ * the confirmation skipped, the prompt opens right away: then this window
+ * shows nothing behind it, and a details window beside it shows the request.
  */
 
-import {describeKey, sign} from './keys.js';
+import {sign} from './keys.js';
+import {showRequest} from './request-view.js';
+import {saveSetting} from './settings.js';
+
+/** Size of the details window, in pixels. */
+const DETAILS_WIDTH = 440;
+const DETAILS_MIN_HEIGHT = 420;
 
 /**
  * How long Continue stays disabled, so a click or key press meant for
@@ -29,15 +37,22 @@ function finish(result) {
 }
 
 /**
- * @param {string} label
- * @param {string} value
+ * @return {{left: number, top: number, width: number, height: number}}
+ *     Where to put the details window: beside this one, on the screen.
  */
-function addFact(label, value) {
-  const dt = document.createElement('dt');
-  dt.textContent = label;
-  const dd = document.createElement('dd');
-  dd.textContent = value;
-  $('facts').append(dt, dd);
+function detailsBounds() {
+  const gap = 8;
+  const screenRight = screen.availLeft + screen.availWidth;
+  let left = window.screenX + window.outerWidth + gap;
+  if (left + DETAILS_WIDTH > screenRight) {
+    left = Math.max(screen.availLeft, window.screenX - DETAILS_WIDTH - gap);
+  }
+  return {
+    left,
+    top: window.screenY,
+    width: DETAILS_WIDTH,
+    height: Math.max(window.outerHeight, DETAILS_MIN_HEIGHT),
+  };
 }
 
 /**
@@ -45,21 +60,48 @@ function addFact(label, value) {
  */
 async function trySign(request) {
   $('continue').classList.add('hidden');
-  const device = request.key.kind === 'passkey' ? 'passkey' : 'security key';
-  $('status').textContent = request.key.verify ?
-      `Confirm with your ${device} (touch & PIN or fingerprint)…` :
-      `Confirm with your ${device}…`;
+  if (request.decision === 'sign') {
+    // The prompt is about to cover this window, unread: show nothing here,
+    // and the request beside it instead.
+    document.body.classList.add('prompting');
+    await chrome.runtime.sendMessage(
+        {type: 'show-details', id, bounds: detailsBounds()});
+  } else {
+    const device =
+        request.key.kind === 'passkey' ? 'passkey' : 'security key';
+    $('status').textContent = request.key.verify ?
+        `Confirm with your ${device} (touch & PIN or fingerprint)…` :
+        `Confirm with your ${device}…`;
+  }
   try {
     const signature =
         await sign(request.key, Uint8Array.from(request.data));
+    document.body.classList.remove('prompting');
     $('status').textContent = 'Done.';
     finish({signature: Array.from(signature)});
   } catch (e) {
     // E.g. the user dismissed Chrome's dialog, or it timed out.
+    document.body.classList.remove('prompting');
     $('status').textContent = `Not signed: ${e.message}`;
     $('continue').textContent = 'Try again';
     $('continue').classList.remove('hidden');
   }
+}
+
+/**
+ * Only start WebAuthn when the user has read the request: Chrome's security
+ * key & passkey dialogs cover this window.
+ *
+ * @param {!Object} request From the background page.
+ */
+function showContinue(request) {
+  $('continue').disabled = true;
+  $('continue').classList.remove('hidden');
+  $('status').textContent = 'Check the request, then click Continue.';
+  setTimeout(() => {
+    $('continue').disabled = false;
+    $('continue').focus();  // Enter continues.
+  }, CONTINUE_DELAY_MS[request.decision] ?? CONTINUE_DELAY_MS.confirm);
 }
 
 $('cancel').onclick = () => finish({error: 'cancelled by the user'});
@@ -71,31 +113,19 @@ const request =
 if (!request) {
   $('status').textContent = 'This request is no longer pending.';
 } else {
-  const {fields, key} = request;
-  addFact('Requested by', request.caller);
-  addFact('Action', fields.action);
-  if (fields.user !== undefined) {
-    addFact('As user', fields.user);
-  }
-  if (fields.namespace !== undefined) {
-    addFact('Namespace', fields.namespace);
-  }
-  addFact('Server', fields.server);
-  addFact('Route', fields.route);
-  addFact('With key', `${key.comment} (${describeKey(key)})`);
-  if (fields.warning) {
-    $('warning').textContent = fields.warning;
-    $('warning').classList.remove('hidden');
-  }
+  showRequest(request);
 
-  // Only start WebAuthn when the user has read the request: Chrome's
-  // security key & passkey dialogs cover this window.
   $('continue').onclick = () => trySign(request);
-  $('continue').disabled = true;
-  $('continue').classList.remove('hidden');
-  $('status').textContent = 'Check the request, then click Continue.';
-  setTimeout(() => {
-    $('continue').disabled = false;
-    $('continue').focus();  // Enter continues.
-  }, CONTINUE_DELAY_MS[request.decision] ?? CONTINUE_DELAY_MS.confirm);
+  if (request.decision === 'sign') {
+    // The user chose to skip the confirmation for such requests.
+    trySign(request);
+  } else {
+    if (request.decision === 'ask') {
+      // The kind of request the setting applies to: offer it here.
+      $('skip-label').classList.remove('hidden');
+      $('skip').onchange = () =>
+        saveSetting('skipConfirmation', $('skip').checked);
+    }
+    showContinue(request);
+  }
 }

@@ -24,6 +24,8 @@ export const Decision = {
   CONFIRM: 'confirm',
   /** Ask. */
   ASK: 'ask',
+  /** Go straight to the touch prompt (the user turned off asking). */
+  SIGN: 'sign',
 };
 
 /**
@@ -43,7 +45,7 @@ export let Fields;
 /**
  * @param {!Uint8Array} data The data to sign.
  * @param {!SessionBindings} bindings The connection's session bindings.
- * @param {{allowUnrecognized: boolean}} settings
+ * @param {{allowUnrecognized: boolean, skipConfirmation: boolean}} settings
  * @return {!Promise<{decision: !Decision, reason: (string|undefined),
  *                    fields: (!Fields|undefined)}>}
  */
@@ -86,7 +88,10 @@ export async function assess(data, bindings, settings) {
       route,
     };
     if (last && !bindings.forwarded) {
-      return {decision: Decision.ASK, fields};
+      return {
+        decision: settings.skipConfirmation ? Decision.SIGN : Decision.ASK,
+        fields,
+      };
     }
     fields.warning = bindings.forwarded ?
         'A server you forwarded your agent to is asking to log in ' +

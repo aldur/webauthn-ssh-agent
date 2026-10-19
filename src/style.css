@@ -44,6 +44,14 @@ body.sign #continue {
   font-weight: bold;
 }
 
+/*
+ * While Chrome's prompt covers the touch window, with the confirmation
+ * skipped: no text behind it (a details window shows the request).
+ */
+body.prompting > * {
+  visibility: hidden;
+}
+
 label {
   display: block;
   margin: 0.4em 0;
