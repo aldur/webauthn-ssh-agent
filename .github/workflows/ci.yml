@@ -1,0 +1,115 @@
+# Test the extension and publish it.
+#
+# * Every push & pull request: unit tests, then an end-to-end test where an
+#   unmodified upstream Secure Shell logs in to a real sshd through this
+#   agent, with a virtual security key.
+# * Pushes to main: refresh the rolling "latest" pre-release.
+# * Tags named v*: publish a release.
+#
+# Third-party actions are pinned to commit hashes.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Syntax check
+        run: for f in src/*.js test/*.js test/e2e/*.mjs; do node --check "$f"; done
+
+      - name: Unit tests
+        run: node --test 'test/*.test.js'
+
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends \
+              openssh-server jq zip xz-utils
+          npm install --no-save --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+
+      # Pinned upstream libapps commit (see build-secure-shell.sh).
+      - name: End-to-end test
+        run: ./test/e2e/run.sh
+
+      - name: Package
+        id: package
+        run: |
+          version=$(jq -r .version manifest.json)
+          name="webauthn-ssh-agent-${version}-$(git rev-parse --short HEAD)"
+          ./scripts/package.sh "$name.zip"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: ${{ steps.package.outputs.name }}.zip
+          if-no-files-found: error
+
+    outputs:
+      name: ${{ steps.package.outputs.name }}
+
+  release:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ZIP: ${{ needs.test.outputs.name }}.zip
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ needs.test.outputs.name }}
+
+      - name: Write release notes
+        run: |
+          cat > notes.md <<EOF
+          WebAuthn SSH Agent, built from ${GITHUB_SHA}.
+
+          1. Download and unzip \`${ZIP}\` somewhere permanent.
+          2. Open \`chrome://extensions\`, enable **Developer mode**, click
+             **Load unpacked** and pick the unzipped folder (the one
+             containing \`manifest.json\`).
+          3. Click the extension's toolbar button ("Manage keys and
+             settings") to add a key and set up Secure Shell.
+
+          SHA-256: \`$(sha256sum "$ZIP" | cut -d' ' -f1)\`
+          EOF
+
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$ZIP" \
+              --title "WebAuthn SSH Agent $GITHUB_REF_NAME" \
+              --notes-file notes.md
+
+      - name: Update rolling "latest" pre-release
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest "$ZIP" --target "$GITHUB_SHA" \
+              --prerelease --title "Latest build" --notes-file notes.md

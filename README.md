@@ -9,8 +9,9 @@ Works with the regular Secure Shell; no native helpers.  Servers need OpenSSH
 
 ## Install
 
-In `chrome://extensions`, enable **Developer mode** and **Load unpacked**
-this folder.
+Download the zip from the [releases page], unzip it, and in
+`chrome://extensions` enable **Developer mode** and **Load unpacked** the
+folder.
 
 ## Use
 
@@ -80,8 +81,11 @@ can't be used.
 ## Development
 
 ```
-node --test 'test/*.test.js'
+node --test 'test/*.test.js'   # unit tests
+./test/e2e/run.sh              # end to end; needs sshd, jq & Playwright
+scripts/package.sh out.zip     # package
 ```
 
 [Secure Shell]: https://chromewebstore.google.com/detail/iodihamcpbpeioajjeobimgagajmlibd
+[releases page]: https://github.com/jlnt/webauthn-ssh-agent/releases
 [PROTOCOL.u2f]: https://github.com/openssh/openssh-portable/blob/master/PROTOCOL.u2f

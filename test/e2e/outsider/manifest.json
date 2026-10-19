@@ -1,0 +1,7 @@
+{
+  "manifest_version": 3,
+  "name": "Outsider (test)",
+  "version": "1",
+  "description": "Test extension that is not allowed to use the agent.",
+  "background": {"service_worker": "background.js"}
+}
