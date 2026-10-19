@@ -90,7 +90,7 @@ test('unbound logins need Continue', async () => {
       login(new Uint8Array(32)), new SessionBindings(), STRICT);
   assert.equal(decision, Decision.CONFIRM);
   assert.equal(fields.server, 'unknown');
-  assert.match(fields.route, /did not bind/);
+  assert.match(fields.route, /didn't say/);
   assert.ok(fields.warning);
 });
 

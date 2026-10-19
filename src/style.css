@@ -61,10 +61,6 @@ label {
   margin: 0.4em 0;
 }
 
-label.sub {
-  margin-left: 2em;
-}
-
 fieldset {
   border: 1px solid GrayText;
   border-radius: 6px;

@@ -2,7 +2,8 @@
 
 An SSH agent for Chrome's [Secure Shell] that keeps your SSH keys on a
 **security key** (YubiKey, Titan, …) or a **passkey**, via WebAuthn.  The
-extension never holds a private key, and every login needs a touch.
+extension never holds a private key, and every login needs your security key
+or passkey.
 
 Works with the regular Secure Shell; no native helpers.  Servers need OpenSSH
 8.4+.
@@ -22,8 +23,8 @@ unpacked** the folder.
    servers.
 2. In Secure Shell, set the connection's **SSH relay server options** to the
    `--ssh-agent=…` line shown in **Manage keys and settings**.
-3. Connect, check the window that pops up, click **Continue** (or press
-   Enter), and touch your key.
+3. Connect, check the request that pops up, click **Continue** (or press
+   Enter), and confirm with your security key or passkey.
 
 For direct logins to a verified server, you can choose how much to see: the
 **Confirmation** level, for each key (synced with it) or as a default.
@@ -42,7 +43,7 @@ Everything goes through WebAuthn, so any authenticator Chrome supports works:
 
 | Authenticator | What you get |
 |---|---|
-| **U2F-only security key** (older keys) | Basic keys: stored as a credential ID, a touch to log in.  No discoverable keys, no PIN or fingerprint (U2F has neither). |
+| **U2F-only security key** (older keys) | Non-discoverable keys, and a touch to log in: U2F has no discoverable keys and no PIN or fingerprint. |
 | **FIDO2 security key** (YubiKey 5, Titan, SoloKey, Nitrokey, …) | Everything: optional discoverable keys, and a PIN or fingerprint for every login, enforced by the security key itself. |
 | **Passkey** (Google Password Manager, iCloud Keychain, Windows Hello, a phone, …) | Always discoverable, held (and usually synced) by the provider, unlocked with your screen lock or biometrics. |
 
@@ -53,16 +54,16 @@ security key can hold both.
 
 ## Where keys live
 
-| | Security key | Security key, discoverable | Passkey |
+| | Security key | Security key, stored on the key | Passkey |
 |---|---|---|---|
-| **Private key** | Never leaves the security key | Never leaves the security key | Held by the passkey provider (may sync) |
+| **Private key** | Stored encrypted in your Chrome profile (synced); only that specific security key can decrypt and use it | Stored in one of the security key's slots (a *discoverable credential*, or *resident key*) | Held by the passkey provider (may sync) |
 | **Login needs** | The security key + the synced credential ID | The security key | The passkey provider |
 | **How to use on a new computer** | Appears through Chrome sync; plug in the security key | Appears through Chrome sync, or **Import** with the security key | Appears through Chrome sync, or **Import**; the passkey must be available there (synced by the provider, or on your phone) |
 
 The extension stores only the public key and credential ID, synced with your
-Chrome profile.  For a non-discoverable key, the credential ID is the private
-key wrapped by the security key: neither works without the other.  A
-*discoverable credential* is also called a *resident key*.
+Chrome profile.  For a key not stored on the security key, the credential ID
+is the encrypted private key: neither it nor the security key works without
+the other.
 
 **Require a PIN or fingerprint** adds `verify-required` to the
 `authorized_keys` line, and asks the security key to enforce it too
@@ -79,9 +80,10 @@ key didn't confirm it.
 * Logins through a forwarded agent or from clients that don't bind sessions,
   and file signatures (e.g. git commits), come with a warning.  Anything else
   is refused unless you allow it.
-* Keys synced from another computer show as *not verified* until you
-  **Verify** them with one touch, since synced data could be tampered with
-  (or turn on **Trust keys synced** if you trust your Google account).
+* Keys sync through your Google account, so whoever controls it could swap
+  in their own public key, which you'd then add to your servers.  Synced
+  keys show as *not verified* until you **Verify** them (or
+  turn on **Trust keys synced**).
 * Only the `storage` permission, a strict content security policy, no
   dependencies.
 

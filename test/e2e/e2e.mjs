@@ -299,7 +299,7 @@ console.log('details windows:', JSON.stringify(detailsWindows[0]));
 for (const forwarded of signWindows.slice(3)) {
   check(forwarded.facts?.['Server'] === `${hostKeyFp} (verified)` &&
         forwarded.facts['Route'] ===
-            `Through a forwarded agent, on the server with host key ` +
+            `Through a forwarded agent, on server ` +
             hostKeyFp &&
         /forwarded your agent/.test(forwarded.warning) &&
         forwarded.mustContinue, forwarded);

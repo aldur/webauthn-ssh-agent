@@ -63,9 +63,9 @@ export async function assess(data, bindings, settings) {
   const last = bindings.last;
   let route;
   if (!last) {
-    route = 'Unknown: the SSH client did not bind the session';
+    route = 'Unknown (your SSH client didn\'t say)';
   } else if (bindings.forwarded) {
-    route = 'Through a forwarded agent, on the server with host key ' +
+    route = 'Through a forwarded agent, on server ' +
         await fingerprint(bindings.first.hostKey);
   } else {
     route = 'Direct connection';
@@ -81,8 +81,7 @@ export async function assess(data, bindings, settings) {
       }
       server = `${await fingerprint(last.hostKey)} (verified)`;
     } else if (what.hostKey) {
-      server = `${await fingerprint(what.hostKey)} (as claimed by the ` +
-          'request, not verified)';
+      server = `${await fingerprint(what.hostKey)} (not verified)`;
     }
     const fields = {
       action: 'Log in',
@@ -98,11 +97,10 @@ export async function assess(data, bindings, settings) {
       return {decision, fields};
     }
     fields.warning = bindings.forwarded ?
-        'A server you forwarded your agent to is asking to log in ' +
-            'elsewhere with your key.  Only continue if you just ran ssh ' +
-            'there yourself.' :
+        'A server you forwarded your agent to wants to log in elsewhere ' +
+            'with your key.  Only continue if you just ran ssh there.' :
         'Your SSH client didn\'t say which server this is for.  Only ' +
-            'continue if you expected this.';
+            'continue if you expected it.';
     return {decision: Decision.CONFIRM, fields};
   }
 
@@ -113,7 +111,7 @@ export async function assess(data, bindings, settings) {
       server: 'not applicable',
       route,
       warning: 'This is not a login.  Only continue if you are signing ' +
-          'something yourself, e.g. a git commit.',
+          'something, e.g. a git commit.',
     }};
   }
 
@@ -121,7 +119,7 @@ export async function assess(data, bindings, settings) {
     action: 'Sign unrecognized data',
     server: 'unknown',
     route,
-    warning: 'This is not an SSH login or file signature.  Only continue if ' +
-        'you know what it is.',
+    warning: 'This is neither an SSH login nor a file signature.  Only ' +
+        'continue if you know what it is.',
   }};
 }

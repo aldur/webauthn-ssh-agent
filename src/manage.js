@@ -82,8 +82,9 @@ function renderKey(key, verified) {
     // Synced data could have been tampered with: say so, and offer to check
     // that the public key really belongs to the credential.
     li.append(element('p', 'unverified',
-        'Not verified on this computer: its public key comes from synced ' +
-        'data, which could have been tampered with.'));
+        'Not verified: synced keys are stored in your Google account, so ' +
+        'if that\'s compromised, this public key could be an attacker\'s.  ' +
+        'Verify it before adding it to a server.'));
   }
 
   const actions = element('div', 'key-actions');
@@ -95,12 +96,12 @@ function renderKey(key, verified) {
         `Copied the public key of "${key.comment}".  Add it to ` +
             '~/.ssh/authorized_keys on your servers.' :
         `Copied the public key of "${key.comment}", which is not verified: ` +
-            'click Verify first to be sure it is really yours.');
+            'if it\'s someone else\'s, adding it lets them log in.');
   };
   if (!verified) {
     const verify = element('button', 'primary', 'Verify');
-    verify.title = 'Check with one touch that this key really belongs to ' +
-        'your security key or passkey';
+    verify.title = 'Check that the key really belongs to your security ' +
+        'key or passkey';
     verify.onclick = async () => {
       setStatus(`Confirm with the security key or passkey of ` +
                 `"${key.comment}"…`);
@@ -166,8 +167,8 @@ async function run(startMessage, operation) {
   setStatus(startMessage);
   try {
     const key = await operation();
-    setStatus(`"${key.comment}" is ready.  Copy its public key to add it to ` +
-              'your servers.');
+    setStatus(`"${key.comment}" is ready.  Add its public key to your ` +
+              'servers.');
   } catch (e) {
     setStatus(`Failed: ${e.message}`);
   } finally {
@@ -183,14 +184,14 @@ $('create').onclick = () => {
     return;
   }
   run('Follow Chrome\'s prompt to create the key…', async () => {
-    const kind = document.querySelector('input[name=kind]:checked').value;
+    const where = document.querySelector('input[name=where]:checked').value;
     const key = await createKey(name, {
-      kind,
-      resident: kind === Kind.SECURITY_KEY && $('resident').checked,
+      kind: where === 'passkey' ? Kind.PASSKEY : Kind.SECURITY_KEY,
+      resident: where === 'discoverable',
       verify: $('verify').checked,
     });
     $('name').value = '';
-    $('resident').checked = $('verify').checked = false;
+    $('verify').checked = false;
     return key;
   });
 };
@@ -205,13 +206,6 @@ $('import').onclick = () => run(
     () => importKey(
         () => setStatus('Confirm once more to finish importing…')));
 
-// The discoverable credential option only applies to security keys:
-// passkeys always are.
-for (const radio of document.querySelectorAll('input[name=kind]')) {
-  radio.onchange = () => {
-    $('resident').disabled = radio.value === Kind.PASSKEY && radio.checked;
-  };
-}
 
 const option = `--ssh-agent=${chrome.runtime.id}`;
 $('agent-option').textContent = option;

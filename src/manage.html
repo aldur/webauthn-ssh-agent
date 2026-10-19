@@ -16,7 +16,7 @@
       <a href="https://chromewebstore.google.com/detail/iodihamcpbpeioajjeobimgagajmlibd"
          target="_blank" rel="noopener noreferrer">Secure Shell</a> that keeps
       your SSH keys on security keys or passkeys.  It never holds a private
-      key, and every login needs your confirmation.
+      key, and every login needs your security key or passkey.
     </p>
 
     <h2>Set up Secure Shell</h2>
@@ -40,21 +40,25 @@
              autocomplete="off" spellcheck="false" />
     </label>
     <fieldset>
-      <legend>Keep the private key on</legend>
+      <legend>Where to keep the private key</legend>
       <label>
-        <input type="radio" name="kind" value="security-key" checked />
-        <b>A security key</b> (YubiKey, Titan, …), which it never leaves
-      </label>
-      <label class="sub">
-        <input id="resident" type="checkbox" />
-        Also store it <i>on</i> the security key (a <i>discoverable
-        credential</i>, or <i>resident key</i>), to import it elsewhere with
-        just the security key.  Needs a FIDO2 key; uses one of its slots.
+        <input type="radio" name="where" value="security-key" checked />
+        <b>Security key</b> (YubiKey, Titan, …): stored encrypted in your
+        Chrome profile (synced); only that specific security key can decrypt
+        and use it.
       </label>
       <label>
-        <input type="radio" name="kind" value="passkey" />
-        <b>A passkey</b> (Google Password Manager, iCloud Keychain, Windows
-        Hello, a phone, …), which may sync it between your devices
+        <input type="radio" name="where" value="discoverable" />
+        <b>Security key, stored on the key</b> (a <i>discoverable
+        credential</i>, or <i>resident key</i>): kept in one of its slots, so
+        you can import it on any computer with just the security key.  Needs
+        FIDO2.
+      </label>
+      <label>
+        <input type="radio" name="where" value="passkey" />
+        <b>Passkey</b> (Google Password Manager, iCloud Keychain, Windows
+        Hello, a phone, …): kept, and usually synced, by your passkey
+        provider.
       </label>
     </fieldset>
     <label>
@@ -63,7 +67,7 @@
     </label>
     <p><button id="create" class="primary">Create key</button></p>
     <p class="note">
-      Chrome's dialog may offer other places to keep the key; the list above
+      Chrome's prompt may offer other places to keep the key; the list above
       shows where each key really went.
     </p>
     <p>
@@ -83,9 +87,7 @@
     </label>
     <p class="note">
       For direct logins to a verified server, with keys that don't set their
-      own.  Every level needs the security key or passkey; requests with a
-      warning (through a forwarded agent, to an unverified server, or not a
-      login) are always reviewed.
+      own level.  Requests with a warning are always reviewed.
     </p>
     <label>
       <input id="allowDevSecureShell" type="checkbox" />
@@ -94,9 +96,9 @@
     </label>
     <label>
       <input id="trustSyncedKeys" type="checkbox" />
-      <b>Trust keys synced</b> from your other computers, without verifying
-      them here.  Only if you trust your Google account's security: whoever
-      controls it could slip in a key of theirs.
+      <b>Trust keys synced</b> from your other computers without verifying
+      them.  Whoever controls your Google account could then get their own
+      public key onto your servers.
     </label>
     <label>
       <input id="allowUnrecognized" type="checkbox" />
@@ -109,32 +111,36 @@
       <dl>
         <dt>Security key</dt>
         <dd>
-          The private key never leaves the security key.  It hands back a
-          <i>credential ID</i>: the private key wrapped (encrypted) with a
-          secret only that security key has.  This extension stores the
-          credential ID and the public key in your Chrome profile, synced to
-          your other computers if Chrome sync is on.  Logging in needs both
-          that data and the security key; neither works alone.
+          <b>Stored:</b> in your Chrome profile, encrypted (and synced, if
+          Chrome sync is on).  <b>Usable:</b> only inside that specific
+          security key, which alone can decrypt it, so you need both.
         </dd>
-        <dt>Security key, discoverable credential (resident key)</dt>
+        <dt>
+          Security key, stored on the key (discoverable credential, or
+          resident key)
+        </dt>
         <dd>
-          The private key is stored in one of the security key's slots.  It
-          works as above, and <b>Import a discoverable key</b> recovers it
-          with the security key alone.  Remove it with the security key's
-          tools (e.g. <code>ykman fido credentials delete</code>).
+          <b>Stored:</b> in one of the security key's slots.
+          <b>Usable:</b> only inside that security key.
+          <b>Import a discoverable key</b> adds it on another computer;
+          remove it with the security key's own tools (e.g.
+          <code>ykman fido credentials delete</code>).
         </dd>
         <dt>Passkey</dt>
         <dd>
-          The passkey provider holds the private key, and may sync it across
-          your devices.  Anyone who can unlock the provider can use it; a
+          <b>Stored:</b> by your passkey provider, usually synced across your
+          devices.  <b>Usable:</b> by whoever can unlock the provider; a
           security key is stronger, as its keys can't be copied.
         </dd>
       </dl>
       <p>
-        This extension only stores public data.  Since synced data could be
-        tampered with (e.g. through a compromised account), a key synced from
-        another computer shows as <i>not verified</i> until you click
-        <b>Verify</b> and confirm with its security key or passkey.
+        In every case, this extension never holds a usable private key.
+      </p>
+      <p>
+        <b>Why verify synced keys?</b>  They come through your Google account.
+        Whoever controls it could swap a key's public key for their own; add
+        that to a server and they can log in.  <b>Verify</b> checks with your
+        security key or passkey that the public key really is theirs.
       </p>
     </details>
 

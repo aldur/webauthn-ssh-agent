@@ -629,9 +629,7 @@ export async function verifyKey(key) {
  */
 export function describeKey(key) {
   if (key.kind === Kind.PASSKEY) {
-    return 'passkey (kept by your passkey provider)';
+    return 'passkey';
   }
-  return key.resident ?
-      'security key (stored on it: discoverable credential)' :
-      'security key';
+  return key.resident ? 'security key, stored on the key' : 'security key';
 }

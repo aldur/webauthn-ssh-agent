@@ -27,11 +27,11 @@ test('describeKey', async () => {
   const {describeKey} = await import('../src/keys.js');
   assert.equal(describeKey({kind: 'security-key', resident: false}),
                'security key');
-  assert.match(describeKey({kind: 'security-key', resident: true}),
-               /discoverable credential/);
+  assert.equal(describeKey({kind: 'security-key', resident: true}),
+               'security key, stored on the key');
   // Keys from before "kind" existed were all on security keys.
   assert.equal(describeKey({resident: false}), 'security key');
-  assert.match(describeKey({kind: 'passkey', resident: true}), /passkey/);
+  assert.equal(describeKey({kind: 'passkey', resident: true}), 'passkey');
 });
 
 const ORIGIN = 'chrome-extension://test';
