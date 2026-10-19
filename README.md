@@ -9,9 +9,11 @@ Works with the regular Secure Shell; no native helpers.  Servers need OpenSSH
 
 ## Install
 
-Chrome Web Store: coming soon.  Meanwhile, download the zip from the
-[releases page], unzip it, and in `chrome://extensions` enable **Developer
-mode** and **Load unpacked** the folder.
+Install it from the [Chrome Web Store].
+
+To try a development build, download the zip from the [releases page], unzip
+it, and in `chrome://extensions` enable **Developer mode** and **Load
+unpacked** the folder.
 
 ## Use
 
@@ -80,5 +82,6 @@ node scripts/store-assets.mjs  # Store images
 ```
 
 [Secure Shell]: https://chromewebstore.google.com/detail/iodihamcpbpeioajjeobimgagajmlibd
+[Chrome Web Store]: https://chromewebstore.google.com/detail/webauthn-ssh-agent/nkcmhjokohmhogfaanphnnfdjfplkklk
 [releases page]: https://github.com/jlnt/webauthn-ssh-agent/releases
 [PROTOCOL.u2f]: https://github.com/openssh/openssh-portable/blob/master/PROTOCOL.u2f
