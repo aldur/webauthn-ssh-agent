@@ -31,6 +31,7 @@
  * SHA256(application) matches the rpIdHash the authenticator signed.
  */
 
+import {decodeCbor} from './cbor.js';
 import {recoverPublicKeys, verifySignature} from './p256.js';
 import {Confirmation, loadSettings} from './settings.js';
 import {cleanName, utf8Prefix} from './text.js';
@@ -80,6 +81,12 @@ const FLAG_UV = 0x04;
 const FLAG_BE = 0x08;
 /** Backed up: the credential is synced. */
 const FLAG_BS = 0x10;
+/** Attested credential data follows the fixed fields. */
+const FLAG_AT = 0x40;
+/** Extension outputs follow (after any attested credential data). */
+const FLAG_ED = 0x80;
+/** CTAP credProtect: never used without user verification. */
+const CRED_PROTECT_UV_REQUIRED = 3;
 
 
 /**
@@ -182,6 +189,31 @@ async function applicationFromAuthData(authData) {
     throw new Error(`unable to determine the RP ID used for ${origin}`);
   }
   return application;
+}
+
+/**
+ * The authenticator's extension outputs, from its authenticator data:
+ * browsers don't pass some on (e.g. credProtect).
+ *
+ * @param {!Uint8Array} authData
+ * @return {!Map} Empty if there are none, or they can't be read.
+ */
+export function authDataExtensions(authData) {
+  if (authData.length < 37 || !(authData[32] & FLAG_ED)) {
+    return new Map();
+  }
+  try {
+    let offset = 37;  // RP ID hash, flags, signature counter.
+    if (authData[32] & FLAG_AT) {
+      // AAGUID, credential ID length & ID, then the COSE public key.
+      const idLength = (authData[offset + 16] << 8) | authData[offset + 17];
+      offset = decodeCbor(authData, offset + 18 + idLength).end;
+    }
+    const {value} = decodeCbor(authData, offset);
+    return value instanceof Map ? value : new Map();
+  } catch (e) {
+    return new Map();
+  }
 }
 
 /**
@@ -545,7 +577,8 @@ export async function createKey(
     // Whether the authenticator confirmed it will refuse to use the key
     // without user verification; otherwise only servers enforce it.
     verifyEnforcedByKey:
-        verify && extensionResults.credProtect === 'userVerificationRequired',
+        verify && authDataExtensions(authData).get('credProtect') ===
+            CRED_PROTECT_UV_REQUIRED,
     requested: kind,
     backupEligible,
     backedUp: !!(authData[32] & FLAG_BS),

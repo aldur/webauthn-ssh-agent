@@ -36,6 +36,71 @@ function fakeStorage() {
   return {sync, local};
 }
 
+// Authenticator data, as authenticators make it.
+const header = (flags, rpIdHash = new Uint8Array(32)) =>
+  [...rpIdHash, flags, 0, 0, 0, 1];
+// A COSE P-256 key: {1: 2, 3: -7, -1: 1, -2: x, -3: y}.
+const coseKey = [0xa5, 0x01, 0x02, 0x03, 0x26, 0x20, 0x01,
+                 0x21, 0x58, 32, ...new Uint8Array(32).fill(1),
+                 0x22, 0x58, 32, ...new Uint8Array(32).fill(2)];
+// AAGUID, credential ID 09090909, public key.
+const attested = [...new Uint8Array(16), 0, 4, 9, 9, 9, 9, ...coseKey];
+// {"credProtect": 3}
+const credProtect = [0xa1, 0x6b, ...new TextEncoder().encode('credProtect'),
+                     0x03];
+
+test('authDataExtensions: what the authenticator reported', async () => {
+  const {authDataExtensions} = await import('../src/keys.js');
+
+  // On creation: attested credential data (AT), then extensions (ED).
+  assert.equal(authDataExtensions(new Uint8Array(
+      [...header(0x40 | 0x80 | 0x05), ...attested, ...credProtect]))
+      .get('credProtect'), 3);
+  // On use: just extensions.
+  assert.equal(authDataExtensions(new Uint8Array(
+      [...header(0x80 | 0x01), ...credProtect])).get('credProtect'), 3);
+  // None, or unreadable.
+  assert.equal(authDataExtensions(new Uint8Array(
+      [...header(0x40 | 0x05), ...attested])).size, 0);
+  assert.equal(authDataExtensions(new Uint8Array(
+      [...header(0x40 | 0x80 | 0x05), ...attested.slice(0, 30)])).size, 0);
+  assert.equal(authDataExtensions(new Uint8Array(10)).size, 0);
+});
+
+test('createKey: PIN enforcement as the authenticator reports it', async () => {
+  const {createKey} = await import('../src/keys.js');
+  // What Chrome returns: credProtect's output only in the authenticator
+  // data, never in getClientExtensionResults().
+  const rpIdHash = await sha256(ORIGIN);
+  const create = (extensions) => async () => ({
+    rawId: new Uint8Array([9, 9, 9, 9]).buffer,
+    authenticatorAttachment: 'cross-platform',
+    getClientExtensionResults: () => ({credProps: {rk: false}}),
+    response: {
+      getPublicKeyAlgorithm: () => -7,
+      getPublicKey: () => new Uint8Array(
+          [...new Uint8Array(26), 4, ...new Uint8Array(64).fill(1)]).buffer,
+      getTransports: () => ['usb'],
+      getAuthenticatorData: () => new Uint8Array([
+        ...header(0x45 | (extensions.length ? 0x80 : 0), rpIdHash),
+        ...attested, ...extensions]).buffer,
+    },
+  });
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  for (const [extensions, enforced] of [[credProtect, true], [[], false]]) {
+    fakeStorage();
+    Object.defineProperty(globalThis, 'navigator', {
+      value: {credentials: {create: create(extensions)}},
+      configurable: true,
+    });
+    const key = await createKey('k', {verify: true});
+    assert.equal(key.verifyEnforcedByKey, enforced);
+  }
+  Object.defineProperty(globalThis, 'navigator', original);
+  delete globalThis.chrome;
+  delete globalThis.location;
+});
+
 test('key storage: one item per key, migrating the old format', async () => {
   const {deleteKey, loadKeys} = await import('../src/keys.js');
   const {sync: store} = fakeStorage();
