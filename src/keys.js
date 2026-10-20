@@ -117,8 +117,9 @@ export const Attachment = {
  *
  * What the authenticator reported: attachment (as of the last use;
  * undefined for older keys until then), transports (when created), resident
- * (a discoverable credential), and backupEligible & backedUp (its BE & BS
- * flags, as of the last use).
+ * (a discoverable credential), backupEligible & backedUp (its BE & BS
+ * flags, as of the last use), and aaguid (its model, when created; unset if
+ * it was all zeros, as browsers often make it).
  *
  * verify is whether every use needs user verification; verifyEnforcedByKey
  * whether the authenticator itself confirmed it enforces that (CTAP
@@ -141,6 +142,7 @@ export const Attachment = {
  *   imported: (boolean|undefined),
  *   attachment: (!Attachment|undefined),
  *   transports: (!Array<string>|undefined),
+ *   aaguid: (string|undefined),
  *   backupEligible: (boolean|undefined),
  *   backedUp: (boolean|undefined),
  * }}
@@ -217,6 +219,25 @@ export function authDataExtensions(authData) {
 }
 
 /**
+ * @param {!Uint8Array} authData From creating a credential.
+ * @return {(string|undefined)} The authenticator's AAGUID, as a lowercase
+ *     UUID, unless it's all zeros (or missing).
+ */
+export function aaguidOf(authData) {
+  if (authData.length < 53 || !(authData[32] & FLAG_AT)) {
+    return undefined;
+  }
+  const bytes = authData.subarray(37, 53);
+  if (bytes.every((b) => b === 0)) {
+    return undefined;
+  }
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16),
+          hex.slice(16, 20), hex.slice(20)].join('-');
+}
+
+/**
  * @param {*} attachment As the browser reported it.
  * @return {(!Attachment|undefined)} Undefined if it's not one we know.
  */
@@ -253,6 +274,8 @@ export function validateKey(raw, applications) {
       !(raw.transports === undefined ||
         Array.isArray(raw.transports) && raw.transports.length <= 8 &&
         raw.transports.every((t) => /^[a-z-]{1,32}$/.test(t))) ||
+      !(raw.aaguid === undefined || typeof raw.aaguid === 'string' &&
+        /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(raw.aaguid)) ||
       ![undefined, true, false].includes(raw.backupEligible) ||
       ![undefined, true, false].includes(raw.backedUp)) {
     return null;
@@ -280,6 +303,7 @@ export function validateKey(raw, applications) {
     imported: raw.imported,
     attachment: raw.attachment,
     transports: raw.transports && [...raw.transports],
+    aaguid: raw.aaguid,
     backupEligible: raw.backupEligible,
     backedUp: raw.backedUp,
   };
@@ -571,6 +595,7 @@ export async function createKey(
     attachment: knownAttachment(credential.authenticatorAttachment),
     transports: (response.getTransports?.() ?? [])
         .filter((t) => /^[a-z-]{1,32}$/.test(t)).slice(0, 8),
+    aaguid: aaguidOf(authData),
     // Passkey providers always make discoverable credentials.
     resident: rk ?? (resident || passkey),
     verify,

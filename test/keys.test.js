@@ -67,6 +67,20 @@ test('authDataExtensions: what the authenticator reported', async () => {
   assert.equal(authDataExtensions(new Uint8Array(10)).size, 0);
 });
 
+test('aaguidOf: the model, unless it was hidden', async () => {
+  const {aaguidOf} = await import('../src/keys.js');
+  const aaguid = [0xee, 0x88, 0x28, 0x79, 0x72, 0x1c, 0x49, 0x13,
+                  0x97, 0x75, 0x3d, 0xfc, 0xce, 0x97, 0x07, 0x2a];
+  const withAaguid = (bytes) => new Uint8Array(
+      [...header(0x45), ...bytes, ...attested.slice(16)]);
+  assert.equal(aaguidOf(withAaguid(aaguid)),
+               'ee882879-721c-4913-9775-3dfcce97072a');
+  // Browsers often zero it without attestation.
+  assert.equal(aaguidOf(withAaguid(new Uint8Array(16))), undefined);
+  // Only creating a credential reports one.
+  assert.equal(aaguidOf(new Uint8Array(header(0x05))), undefined);
+});
+
 test('createKey: PIN enforcement as the authenticator reports it', async () => {
   const {createKey} = await import('../src/keys.js');
   // What Chrome returns: credProtect's output only in the authenticator
@@ -223,6 +237,8 @@ test('renaming & other updates are validated', async () => {
   assert.equal(validateKey(storedKey('a', 1, {imported: 1}), [ORIGIN]),
                null);
   assert.equal(validateKey(storedKey('a', 1, {attachment: 'usb'}), [ORIGIN]),
+               null);
+  assert.equal(validateKey(storedKey('a', 1, {aaguid: 'EE88'}), [ORIGIN]),
                null);
   assert.equal(validateKey(storedKey('a', 1, {transports: 'usb'}), [ORIGIN]),
                null);

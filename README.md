@@ -114,6 +114,7 @@ node --test 'test/*.test.js'   # unit tests
 ./test/e2e/run.sh              # end to end; needs sshd, jq & Playwright
 scripts/package.sh out.zip     # --store: Chrome Web Store build
 node scripts/store-assets.mjs  # Store images
+node scripts/aaguids.mjs       # refresh authenticator model names
 ```
 
 To release, change the version in `manifest.json` and push to `main`: CI

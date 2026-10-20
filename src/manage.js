@@ -9,6 +9,7 @@ import {
   keyAuthorizedKeysLine, keyBlob, loadKeys, renameKey, setKeyConfirmation,
   verifyKey,
 } from './keys.js';
+import {AAGUID_NAMES} from './aaguids.js';
 import {loadSettings, saveSetting} from './settings.js';
 import {fingerprint} from './ssh.js';
 
@@ -92,6 +93,11 @@ const COLUMNS = [
                  'Platform: built into the computer (OS or browser).\n' +
                  'Cross-platform: roaming, e.g. a security key (USB, NFC, ' +
                  'Bluetooth) or a phone (hybrid).'],
+  ['AAGUID', 'The authenticator\'s model ID, as reported when the key was ' +
+             'created.\n' +
+             '✓ Reported: hover for the model, from a community list.\n' +
+             'Blank: not reported (browsers often send all zeros), or the ' +
+             'key is older than this column.'],
   ['Verified', 'Whether this computer checked the public key with the ' +
                'authenticator.  Synced keys need this once per computer: ' +
                'whoever controls your Google account could swap the public ' +
@@ -227,6 +233,18 @@ function renderAttachment(key) {
 
 /**
  * @param {!Object} key A StoredKey.
+ * @return {!Element} ✓ if it has an AAGUID, with its model on hover.
+ */
+function renderAaguid(key) {
+  if (!key.aaguid) {
+    return markCell('', '', 'Not reported');
+  }
+  const model = AAGUID_NAMES.get(key.aaguid) ?? 'Unknown model';
+  return markCell('✓', 'yes', `${model}\nAAGUID ${key.aaguid}`);
+}
+
+/**
+ * @param {!Object} key A StoredKey.
  * @param {boolean} verified Whether this computer vouches for the key.
  * @return {!Element} ✓, or a button to verify it.
  */
@@ -355,6 +373,7 @@ function renderKey(key, verified, keyFingerprint) {
   tr.append(
       renderName(key, keyFingerprint),
       renderAttachment(key),
+      renderAaguid(key),
       renderVerified(key, verified),
       key.resident ?
           markCell('✓', 'yes', 'Discoverable credential (resident key)') :
