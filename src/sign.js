@@ -65,10 +65,10 @@ async function trySign(request) {
           {type: 'show-details', id, bounds: detailsBounds()});
     }
   } else {
-    $('status').textContent = request.key.verify ?
-        'Confirm with your security key or passkey, with your PIN or ' +
-            'fingerprint…' :
-        'Confirm with your security key or passkey…';
+    // Name the key: ssh tries keys one by one, so it may not be the one
+    // the user expects.
+    $('status').textContent = `Confirm with "${request.key.comment}"` +
+        (request.key.verify ? ', and your PIN or fingerprint…' : '…');
   }
   try {
     const signature =
