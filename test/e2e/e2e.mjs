@@ -158,10 +158,13 @@ await options.fill('#name', 'pin-key');
 await options.check('#verify');
 await options.click('#create');
 await status.getByText('"pin-key" is ready').waitFor();
-await options.locator('#keys').getByText('PIN required').waitFor();
+// pin-key's PIN column is marked (the virtual authenticator doesn't
+// enforce the PIN itself, so "by servers only").
+await options.locator('#keys tr', {hasText: 'pin-key'})
+    .locator('[data-tip^="Required, enforced by servers only"]').waitFor();
 // The virtual authenticator is a USB security key, & the list says so.
-await options.locator('#keys li', {hasText: 'touch-key'})
-    .getByText(/^security key ·/).waitFor();
+await options.locator('#keys tr', {hasText: 'touch-key'})
+    .getByText('Cross-platform', {exact: true}).waitFor();
 console.log('created keys in "Manage keys and settings"');
 
 ({credentials} = await optionsCdp.send(
@@ -281,7 +284,7 @@ for (const [i, shown] of [[0, signWindows[0]], [2, signWindows[2]]]) {
         facts['Action'] === 'Log in' && facts['As user'] === user &&
         facts['Server'] === `${hostKeyFp} (verified)` &&
         facts['Route'] === 'Direct connection' &&
-        facts['With key'].startsWith('touch-key ') &&
+        facts['With key'] === 'touch-key' &&
         shown.mustContinue === (i === 0) && !shown.warning &&
         shown.title === `Log in as ${user} · ${hostKeyFp} (verified)`, shown);
 }
@@ -290,7 +293,7 @@ console.log('direct login touch windows:', JSON.stringify(signWindows[0]));
 check(!signWindows[1].mustContinue, signWindows[1]);
 // Only Show showed the request beside the prompt.
 if (detailsWindows.length !== 1 || !detailsWindows.every(({facts}) =>
-  facts?.['As user'] === user && facts['With key'].startsWith('touch-key ') &&
+  facts?.['As user'] === user && facts['With key'] === 'touch-key' &&
     facts['Server'] === `${hostKeyFp} (verified)`)) {
   throw new Error(`details windows: ${JSON.stringify(detailsWindows)}`);
 }

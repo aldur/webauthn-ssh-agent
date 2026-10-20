@@ -5,23 +5,41 @@
  */
 
 import {
-  Kind, createKey, deleteKey, describeKey, importKey, isVerified,
-  keyAuthorizedKeysLine, loadKeys, setKeyConfirmation, verifyKey,
+  Attachment, Kind, createKey, deleteKey, importKey, isMismatched, isVerified,
+  keyAuthorizedKeysLine, keyBlob, loadKeys, renameKey, setKeyConfirmation,
+  verifyKey,
 } from './keys.js';
 import {loadSettings, saveSetting} from './settings.js';
+import {fingerprint} from './ssh.js';
 
 const $ = (id) => document.getElementById(id);
 
-/** @param {string} message */
-function setStatus(message) {
+/** How long a status message stays up, unless something is in progress. */
+const STATUS_MS = 10 * 1000;
+
+let statusTimer;
+
+/** A key to highlight briefly when the list shows it, as it's new. */
+let highlight = null;
+
+/**
+ * @param {string} message
+ * @param {boolean=} inProgress Keep it up until the next message.
+ */
+function setStatus(message, inProgress = false) {
   $('status').textContent = message;
+  clearTimeout(statusTimer);
+  if (!inProgress) {
+    statusTimer = setTimeout(() => setStatus(''), STATUS_MS);
+  }
 }
 
-/** The confirmation levels, as shown in dropdowns. */
+/** The confirmation levels: name, & what it does. */
 const LEVELS = {
-  review: 'Review',
-  show: 'Show',
-  silent: 'Silent',
+  review: ['Review', 'shows the request & waits for Continue'],
+  show: ['Show', 'opens the prompt right away, showing the request beside ' +
+                 'it'],
+  silent: ['Silent', 'only opens the prompt'],
 };
 
 /**
@@ -30,130 +48,387 @@ const LEVELS = {
  * @return {!Element} The key's confirmation level dropdown.
  */
 function renderLevel(key, verified) {
-  const select = document.createElement('select');
-  select.title = 'Confirmation for direct logins to a verified server';
-  const option = (value, text) => {
-    const o = document.createElement('option');
+  const fallback = $('confirmation').value;
+  const option = (value, name, title) => {
+    const o = element('option', '', name);
     o.value = value;
-    o.textContent = text;
+    o.title = title;  // (Options are drawn by the browser.)
     return o;
   };
+  const select = element('select');
   select.append(
-      option('', `Default (${LEVELS[$('confirmation').value]})`),
-      ...Object.entries(LEVELS).map(([value, text]) => option(value, text)));
+      option('', 'Default',
+             `The default from Settings, now ${LEVELS[fallback][0]}`),
+      ...Object.entries(LEVELS).map(
+          ([value, [name, does]]) => option(value, name, `${name}: ${does}`)));
   select.value = key.confirmation ?? '';
-  select.onchange = () => setKeyConfirmation(key, select.value || null);
   if (!verified) {
-    // Its own level only applies once verified on this computer.
     select.disabled = true;
-    select.title = 'Verify the key to set its confirmation level';
+    select.dataset.tip = 'A key\'s own level only applies once it\'s ' +
+        'verified on this computer; until then, the default ' +
+        `(${LEVELS[fallback][0]})`;
+    return select;
   }
+  // Hovering explains what the current choice does.
+  const explain = () => {
+    const [name, does] = LEVELS[select.value || fallback];
+    select.dataset.tip = 'For direct logins to a verified server: ' +
+        `${name}${select.value ? '' : ' (the default)'}, which ${does}.`;
+  };
+  explain();
+  select.onchange = () => {
+    explain();
+    setKeyConfirmation(key, select.value || null);
+  };
   return select;
+}
+
+/**
+ * The key list's columns: heading, & what it means (shown on hover).
+ */
+const COLUMNS = [
+  ['Name', ''],
+  ['Attachment', 'authenticatorAttachment, as last reported.\n' +
+                 'Platform: built into the computer (OS or browser).\n' +
+                 'Cross-platform: roaming, e.g. a security key (USB, NFC, ' +
+                 'Bluetooth) or a phone (hybrid).'],
+  ['Verified', 'Whether this computer checked the public key with the ' +
+               'authenticator.  Synced keys need this once per computer: ' +
+               'whoever controls your Google account could swap the public ' +
+               'key.  It covers the public key & UV; the other columns are ' +
+               'as synced.'],
+  ['Discoverable', 'A discoverable credential (resident key) is stored on ' +
+                   'the authenticator, so it can be imported on another ' +
+                   'computer.'],
+  ['Backup', 'The authenticator\'s backup flags, as last reported.\n' +
+             '✓ Backed up (BS): multi-device, synced.\n' +
+             '○ Backup eligible (BE): multi-device, not synced yet.\n' +
+             'Single-device: not backup eligible, so bound to the ' +
+             'authenticator: only it can use the private key.'],
+  ['UV', 'Require a PIN or fingerprint: user verification (UV) on every ' +
+         'login, not just user presence (a touch).\n' +
+         'Green: the authenticator enforces it (credProtect).\n' +
+         'Grey: only servers do (verify-required).'],
+  ['Confirmation', 'How much to show before direct logins to a verified ' +
+                   'server.'],
+  ['', ''],
+];
+
+/**
+ * @param {string} tag
+ * @param {string=} className
+ * @param {string=} text
+ * @param {string=} tip Shown on hover or click.
+ * @return {!Element}
+ */
+function element(tag, className = '', text = '', tip = '') {
+  const e = document.createElement(tag);
+  e.className = className;
+  e.textContent = text;
+  if (tip) {
+    e.dataset.tip = tip;
+    if (tag === 'button') {
+      e.setAttribute('aria-label', tip);  // For icon buttons.
+    }
+  }
+  return e;
+}
+
+/**
+ * A cell with a mark (or none), explained on hover.
+ *
+ * @param {string} mark E.g. ✓, ○ or ?, or '' for none.
+ * @param {string} style yes, weak (grey), or wrong (red).
+ * @param {string} tip What it means.
+ * @return {!Element}
+ */
+function markCell(mark, style, tip) {
+  const td = element('td', 'mark', '', tip);
+  if (mark) {
+    td.append(element('span', style, mark));
+  }
+  return td;
+}
+
+/**
+ * The key's name: hovering shows its details, clicking renames it (unless
+ * it's stored on the authenticator, which keeps its own copy of the name).
+ *
+ * @param {!Object} key A StoredKey.
+ * @param {string} keyFingerprint As ssh shows it, e.g. in server logs.
+ * @return {!Element}
+ */
+function renderName(key, keyFingerprint) {
+  const td = element('td', 'key-name');
+  const details = (key.imported ? 'Imported ' : 'Added ') +
+      `${new Date(key.created).toLocaleDateString()}\n` +
+      keyFingerprint;
+  if (key.resident) {
+    td.append(element('span', '', key.comment,
+        `${details}\nStored with this name on the authenticator, so it ` +
+        'can\'t be renamed here'));
+    return td;
+  }
+  const name = element('span', 'rename', key.comment,
+      `${details}\nClick to rename`);
+  name.onclick = () => {
+    const input = element('input');
+    input.value = key.comment;
+    input.size = Math.max(key.comment.length, 8);
+    let done = false;
+    const finish = async (save) => {
+      if (done) {
+        return;
+      }
+      done = true;
+      try {
+        if (save && input.value.trim() !== key.comment) {
+          await renameKey(key, input.value);  // The list reloads.
+          return;
+        }
+      } catch (e) {
+        setStatus(`Not renamed: ${e.message}`);
+      }
+      input.replaceWith(name);
+    };
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter' || e.key === 'Escape') {
+        finish(e.key === 'Enter');
+      }
+    };
+    input.onblur = () => finish(true);
+    name.replaceWith(input);
+    input.select();
+  };
+  td.append(name);
+  return td;
+}
+
+/** For what the authenticator hasn't reported yet (older keys). */
+const UNKNOWN = 'Not known yet: updated the next time the key is used';
+
+/**
+ * @param {!Object} key A StoredKey.
+ * @return {!Element} Its authenticatorAttachment, & transports on hover.
+ */
+function renderAttachment(key) {
+  const transports = key.transports?.length ?
+      `\nTransports: ${key.transports.join(', ')}` : '';
+  switch (key.attachment) {
+    case Attachment.PLATFORM:
+      return element('td', '', 'Platform',
+                     `Platform: built into the computer${transports}`);
+    case Attachment.CROSS_PLATFORM:
+      return element('td', '', 'Cross-platform',
+                     `Cross-platform: a roaming authenticator${transports}`);
+  }
+  return element('td', 'weak', '?', UNKNOWN);
 }
 
 /**
  * @param {!Object} key A StoredKey.
  * @param {boolean} verified Whether this computer vouches for the key.
- * @return {!Element}
+ * @return {!Element} ✓, or a button to verify it.
  */
-function renderKey(key, verified) {
-  const element = (tag, className, text) => {
-    const e = document.createElement(tag);
-    e.className = className;
-    if (text) {
-      e.textContent = text;
-    }
-    return e;
-  };
-  const li = element('li', 'key');
-
-  const head = element('div', 'key-head');
-  head.append(
-      element('span', 'key-name', key.comment),
-      element('span', 'details', [
-        describeKey(key),
-        ...(key.verify ? [key.verifyEnforcedByKey ? 'PIN required' :
-                              'PIN required (enforced by servers only)'] : []),
-        new Date(key.created).toLocaleDateString(),
-      ].join(' · ')));
-  li.append(head);
-
-  if (!verified) {
-    // Synced data could have been tampered with: say so, and offer to check
-    // that the public key really belongs to the credential.
-    li.append(element('p', 'unverified',
-        'Not verified: synced keys are stored in your Google account, so ' +
-        'if that\'s compromised, this public key could be an attacker\'s.  ' +
-        'Verify it before adding it to a server.'));
+function renderVerified(key, verified) {
+  if (verified) {
+    return markCell('✓', 'yes', 'Verified on this computer');
   }
+  const td = element('td', 'mark');
+  const verify = element('button', 'small', 'Verify',
+      'Not verified on this computer: check that the public key belongs to ' +
+      'the authenticator before adding it to a server');
+  verify.onclick = async () => {
+    setStatus(`Confirm with the security key or passkey of ` +
+              `"${key.comment}"…`, true);
+    try {
+      await verifyKey(key);
+      setStatus(`"${key.comment}" is verified.`);
+    } catch (e) {
+      setStatus(`Not verified: ${e.message}`);
+    }
+  };
+  td.append(verify);
+  return td;
+}
 
-  const actions = element('div', 'key-actions');
-  const copy = element('button', '',
-      verified ? 'Copy public key' : 'Copy unverified public key');
+/**
+ * @param {!Object} key A StoredKey.
+ * @return {!Element} Its backup flags, in red if a security key was asked
+ *     for (those are single-device).
+ */
+function renderBackup(key) {
+  if (key.backupEligible === undefined) {
+    return element('td', 'mark weak', '?', UNKNOWN);
+  }
+  if (!key.backupEligible) {
+    return element('td', 'mark', 'Single-device', 'Not backup eligible, so ' +
+                   'bound to the authenticator: only it can use the ' +
+                   'private key');
+  }
+  const wrong = isMismatched(key);
+  const asked = wrong ? '.  You asked for a security key.' : '';
+  return key.backedUp ?
+      markCell('✓', wrong ? 'wrong' : 'yes',
+               `Backed up (BS): multi-device, synced${asked}`) :
+      markCell('○', wrong ? 'wrong' : 'weak',
+               `Backup eligible (BE): multi-device, not synced yet${asked}`);
+}
+
+/**
+ * @param {!Object} key A StoredKey.
+ * @return {!Element} Whether it requires user verification, & who enforces
+ *     it.
+ */
+function renderUv(key) {
+  if (!key.verify) {
+    return markCell('', '', 'Not required: a touch is enough');
+  }
+  return key.verifyEnforcedByKey ?
+      markCell('✓', 'yes',
+               'Required, enforced by the authenticator (credProtect)') :
+      markCell('✓', 'weak',
+               'Required, enforced by servers only (verify-required)');
+}
+
+/**
+ * @param {!Object} key A StoredKey.
+ * @param {boolean} verified Whether this computer vouches for the key.
+ * @return {!Element} Copy & forget buttons.
+ */
+function renderActions(key, verified) {
+  const td = element('td', 'actions');
+  const copy = element('button', 'icon', '⧉',
+      'Copy this key\'s authorized_keys line' +
+      (verified ? '' : ' (not verified)'));
   copy.onclick = async () => {
     await navigator.clipboard.writeText(keyAuthorizedKeysLine(key));
+    copy.textContent = '✓';
+    copy.classList.add('yes');
+    setTimeout(() => {
+      copy.textContent = '⧉';
+      copy.classList.remove('yes');
+    }, 1500);
     setStatus(verified ?
-        `Copied the public key of "${key.comment}".  Add it to ` +
-            '~/.ssh/authorized_keys on your servers.' :
-        `Copied the public key of "${key.comment}", which is not verified: ` +
-            'if it\'s someone else\'s, adding it lets them log in.');
+        `Copied "${key.comment}".  Add it to ~/.ssh/authorized_keys on ` +
+            'your servers.' :
+        `Copied "${key.comment}", which isn't verified: if it's someone ` +
+            'else\'s, adding it lets them log in.');
   };
-  if (!verified) {
-    const verify = element('button', 'primary', 'Verify');
-    verify.title = 'Check that the key really belongs to your security ' +
-        'key or passkey';
-    verify.onclick = async () => {
-      setStatus(`Confirm with the security key or passkey of ` +
-                `"${key.comment}"…`);
-      try {
-        await verifyKey(key);
-        setStatus(`"${key.comment}" is verified.`);
-        await load();
-      } catch (e) {
-        setStatus(`Not verified: ${e.message}`);
-      }
-    };
-    actions.append(verify);
-  }
-  const level = element('label', 'level', 'Confirmation ');
-  level.append(renderLevel(key, verified));
-
-  const remove = element('button', 'forget', 'Forget');
-  remove.title = 'Forget this key';
-  remove.onclick = async () => {
+  const forget = element('button', 'icon forget', '✕', 'Forget this key');
+  forget.onclick = async () => {
     // Ask for a second click to confirm.
-    if (remove.dataset.armed) {
+    if (forget.dataset.armed) {
       await deleteKey(key.credentialId);
       setStatus(`Forgot "${key.comment}".  Also remove it from ` +
-                '~/.ssh/authorized_keys on your servers.');
+                '~/.ssh/authorized_keys on your servers' +
+                (key.resident ? ', and from the authenticator' : '') + '.');
       return;
     }
-    remove.dataset.armed = '1';
-    remove.textContent = 'Click again to forget';
+    forget.dataset.armed = '1';
+    forget.textContent = 'Forget?';
     setTimeout(() => {
-      delete remove.dataset.armed;
-      remove.textContent = 'Forget';
+      delete forget.dataset.armed;
+      forget.textContent = '✕';
     }, 5000);
   };
+  td.append(copy, forget);
+  return td;
+}
 
-  actions.append(copy, level, remove);
-  li.append(actions);
-  return li;
+/**
+ * @param {!Object} key A StoredKey.
+ * @param {boolean} verified Whether this computer vouches for the key.
+ * @param {string} keyFingerprint
+ * @return {!Element} The key's row, in COLUMNS' order.
+ */
+function renderKey(key, verified, keyFingerprint) {
+  const level = element('td');
+  const select = renderLevel(key, verified);
+  // A disabled control gets no mouse events: explain it from its cell.
+  if (select.disabled) {
+    level.dataset.tip = select.dataset.tip;
+  }
+  level.append(select);
+
+  const tr = element('tr', key.credentialId === highlight ? 'key new' : 'key');
+  tr.append(
+      renderName(key, keyFingerprint),
+      renderAttachment(key),
+      renderVerified(key, verified),
+      key.resident ?
+          markCell('✓', 'yes', 'Discoverable credential (resident key)') :
+          markCell('', '', 'Non-discoverable: needs the credential ID kept ' +
+                   'here'),
+      renderBackup(key),
+      renderUv(key),
+      level,
+      renderActions(key, verified));
+  return tr;
+}
+
+/**
+ * Tooltips: the browser's own only show after a delay, and never on click
+ * or tap, so show data-tip right away instead.
+ */
+const tooltip = element('div', 'tip');
+tooltip.setAttribute('role', 'tooltip');
+tooltip.hidden = true;
+document.body.append(tooltip);
+
+/** @param {?Element} target With data-tip, or null to hide the tooltip. */
+function showTip(target) {
+  if (!target?.dataset.tip) {
+    tooltip.hidden = true;
+    return;
+  }
+  tooltip.textContent = target.dataset.tip;
+  tooltip.hidden = false;
+  const box = target.getBoundingClientRect();
+  tooltip.style.left = `${Math.max(8, Math.min(
+      box.left, innerWidth - tooltip.offsetWidth - 8))}px`;
+  tooltip.style.top = `${box.bottom + tooltip.offsetHeight + 4 < innerHeight ?
+      box.bottom + 4 : box.top - tooltip.offsetHeight - 4}px`;
+}
+for (const type of ['mouseover', 'click', 'focusin']) {
+  document.addEventListener(
+      type, (e) => showTip(e.target.closest?.('[data-tip]') ?? null));
+}
+document.documentElement.addEventListener('mouseleave', () => showTip(null));
+addEventListener('scroll', () => showTip(null), true);
+addEventListener('keydown', (e) => e.key === 'Escape' && showTip(null));
+
+/** @return {!Element} The key list's header: each column explains itself. */
+function renderHead() {
+  const tr = element('tr');
+  for (const [name, meaning] of COLUMNS) {
+    const th = element('th', '', '', meaning);
+    th.append(meaning ? element('abbr', '', name) : name);
+    tr.append(th);
+  }
+  const head = element('thead');
+  head.append(tr);
+  return head;
 }
 
 /** Refresh the list of keys. */
 async function load() {
   const keys = await loadKeys();
-  if (keys.length) {
-    const verified = await Promise.all(keys.map(isVerified));
-    $('keys').replaceChildren(
-        ...keys.map((key, i) => renderKey(key, verified[i])));
-  } else {
-    const li = document.createElement('li');
-    li.className = 'empty';
-    li.textContent = 'No keys yet.  Add one below.';
-    $('keys').replaceChildren(li);
+  const verified = await Promise.all(keys.map(isVerified));
+  const fingerprints =
+      await Promise.all(keys.map((key) => fingerprint(keyBlob(key))));
+  showTip(null);  // Its target is about to go.
+  if (!keys.length) {
+    const td = element('td', 'empty', 'No keys yet.  Add one below.');
+    td.colSpan = COLUMNS.length;
+    const tr = element('tr');
+    tr.append(td);
+    $('keys').replaceChildren(tr);
+    return;
   }
+  $('keys').replaceChildren(
+      renderHead(),
+      ...keys.map((key, i) => renderKey(key, verified[i], fingerprints[i])));
 }
 
 /**
@@ -164,16 +439,32 @@ async function load() {
  */
 async function run(startMessage, operation) {
   $('create').disabled = $('import').disabled = true;
-  setStatus(startMessage);
+  setStatus(startMessage, true);
   try {
     const key = await operation();
+    // (The list may redraw more than once as storage changes.)
+    highlight = key.credentialId;
+    setTimeout(() => highlight = null, 3000);
+    load();
     setStatus(`"${key.comment}" is ready.  Add its public key to your ` +
               'servers.');
   } catch (e) {
-    setStatus(`Failed: ${e.message}`);
+    setStatus(e.message === 'not kept' ? `Not kept.  ${leftover(e.key)}` :
+              `Failed: ${e.message}`);
   } finally {
     $('create').disabled = $('import').disabled = false;
   }
+}
+
+/**
+ * @param {!Object} key A StoredKey that wasn't kept.
+ * @return {string} What's left of it on the authenticator.
+ */
+function leftover(key) {
+  return key.resident ?
+      'The authenticator still stores it; delete it there if you like ' +
+          '(e.g. `ykman fido credentials delete`).' :
+      'Nothing was stored on the authenticator.';
 }
 
 $('create').onclick = () => {
@@ -189,6 +480,10 @@ $('create').onclick = () => {
       kind: where === 'passkey' ? Kind.PASSKEY : Kind.SECURITY_KEY,
       resident: where === 'discoverable',
       verify: $('verify').checked,
+      // Chrome's prompt offers other places: make sure it's what they want.
+      keep: async (key) => !isMismatched(key) || confirm(
+          `"${key.comment}" is backup eligible (multi-device): it can ` +
+          'sync, unlike on a security key.  Keep it?'),
     });
     $('name').value = '';
     $('verify').checked = false;
@@ -204,8 +499,7 @@ $('name').onkeyup = (e) => {
 $('import').onclick = () => run(
     'Pick the key in Chrome\'s prompt…',
     () => importKey(
-        () => setStatus('Confirm once more to finish importing…')));
-
+        () => setStatus('Confirm once more to finish importing…', true)));
 
 const option = `--ssh-agent=${chrome.runtime.id}`;
 $('agent-option').textContent = option;

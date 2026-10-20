@@ -15,8 +15,8 @@
       An SSH agent for
       <a href="https://chromewebstore.google.com/detail/iodihamcpbpeioajjeobimgagajmlibd"
          target="_blank" rel="noopener noreferrer">Secure Shell</a> that keeps
-      your SSH keys on security keys or passkeys.  It never holds a private
-      key, and every login needs your security key or passkey.
+      your SSH keys on security keys or passkeys.  It never has access to a
+      private key, and every login needs your security key or passkey.
     </p>
 
     <h2>Set up Secure Shell</h2>
@@ -27,10 +27,10 @@
     </p>
 
     <h2>Your keys</h2>
-    <ul id="keys" class="keys"></ul>
+    <div class="scroll"><table id="keys" class="keys"></table></div>
     <p class="note">
-      Add a key's public key to <code>~/.ssh/authorized_keys</code> on your
-      servers (OpenSSH 8.4 or newer).
+      Copy (⧉) a key's line into <code>~/.ssh/authorized_keys</code> on
+      your servers (OpenSSH 8.4 or newer).
     </p>
 
     <h2>Add a key</h2>
@@ -40,25 +40,24 @@
              autocomplete="off" spellcheck="false" />
     </label>
     <fieldset>
-      <legend>Where to keep the private key</legend>
+      <legend>What to ask Chrome for</legend>
       <label>
         <input type="radio" name="where" value="security-key" checked />
-        <b>Security key</b> (YubiKey, Titan, …): stored encrypted in your
-        Chrome profile (synced); only that specific security key can decrypt
-        and use it.
+        <b>Security key</b> (YubiKey, Titan, …): a non-discoverable
+        credential on a cross-platform authenticator.  Only that security
+        key can use it.
       </label>
       <label>
         <input type="radio" name="where" value="discoverable" />
-        <b>Security key, stored on the key</b> (a <i>discoverable
-        credential</i>, or <i>resident key</i>): kept in one of its slots, so
-        you can import it on any computer with just the security key.  Needs
-        FIDO2.
+        <b>Security key, stored on the key</b>: a discoverable credential
+        (resident key) on a cross-platform authenticator, so you can import
+        it on any computer with just the security key.  Needs FIDO2.
       </label>
       <label>
         <input type="radio" name="where" value="passkey" />
         <b>Passkey</b> (Google Password Manager, iCloud Keychain, Windows
-        Hello, a phone, …): kept, and usually synced, by your passkey
-        provider.
+        Hello, a phone, …): a discoverable credential on a platform
+        authenticator or phone, usually backed up (synced).
       </label>
     </fieldset>
     <label>
@@ -67,12 +66,12 @@
     </label>
     <p><button id="create" class="primary">Create key</button></p>
     <p class="note">
-      Chrome's prompt may offer other places to keep the key; the list above
-      shows where each key really went.
+      Chrome's prompt may offer something else: <b>Your keys</b> shows what
+      each authenticator reported.
     </p>
     <p>
-      Have a discoverable key or passkey from elsewhere?
-      <button id="import">Import a discoverable key</button>
+      Made a discoverable key or passkey with this extension on another
+      computer?  <button id="import">Import</button>
     </p>
 
     <h2>Settings</h2>
@@ -86,13 +85,13 @@
       </select>
     </label>
     <p class="note">
-      For direct logins to a verified server, with keys that don't set their
-      own level.  Requests with a warning are always reviewed.
+      For direct logins to a verified server, unless a key verified on this
+      computer sets its own level.  Requests with a warning are always
+      reviewed.
     </p>
     <label>
       <input id="allowDevSecureShell" type="checkbox" />
-      Accept requests from <b>Secure Shell (dev)</b>, Secure Shell's
-      development channel
+      Also accept requests from <b>Secure Shell (dev)</b>
     </label>
     <label>
       <input id="trustSyncedKeys" type="checkbox" />
@@ -108,39 +107,43 @@
 
     <details>
       <summary>Where do my keys live?</summary>
+      <p>
+        <i>Security key</i> and <i>passkey</i> are everyday names.  Here, a
+        security key is a cross-platform authenticator whose credentials are
+        single-device: bound to it, so only it can use the private key.  A
+        passkey is a discoverable credential on a platform authenticator or
+        phone, usually multi-device: it can sync.
+      </p>
       <dl>
         <dt>Security key</dt>
         <dd>
-          <b>Stored:</b> in your Chrome profile, encrypted (and synced, if
-          Chrome sync is on).  <b>Usable:</b> only inside that specific
-          security key, which alone can decrypt it, so you need both.
+          <b>Stored:</b> encrypted, as the credential ID, in your Chrome
+          profile (synced).  <b>Usable:</b> only inside that security key,
+          which alone can decrypt it.  <b>Your keys:</b> Cross-platform,
+          Single-device.
         </dd>
-        <dt>
-          Security key, stored on the key (discoverable credential, or
-          resident key)
-        </dt>
+        <dt>Security key, stored on the key</dt>
         <dd>
           <b>Stored:</b> in one of the security key's slots.
           <b>Usable:</b> only inside that security key.
-          <b>Import a discoverable key</b> adds it on another computer;
+          <b>Import</b> adds it on another computer;
           remove it with the security key's own tools (e.g.
-          <code>ykman fido credentials delete</code>).
+          <code>ykman fido credentials delete</code>).  <b>Your keys:</b>
+          Cross-platform, Discoverable, Single-device.
         </dd>
         <dt>Passkey</dt>
         <dd>
-          <b>Stored:</b> by your passkey provider, usually synced across your
-          devices.  <b>Usable:</b> by whoever can unlock the provider; a
-          security key is stronger, as its keys can't be copied.
+          <b>Stored:</b> by the platform authenticator or phone, usually
+          synced.  <b>Usable:</b> by whoever can unlock it; a security key is
+          stronger, as its keys are bound to it.  <b>Your keys:</b> Platform
+          (Cross-platform for a phone), Discoverable, usually backed up
+          (✓).
         </dd>
       </dl>
       <p>
-        In every case, this extension never holds a usable private key.
-      </p>
-      <p>
-        <b>Why verify synced keys?</b>  They come through your Google account.
-        Whoever controls it could swap a key's public key for their own; add
-        that to a server and they can log in.  <b>Verify</b> checks with your
-        security key or passkey that the public key really is theirs.
+        <b>Why verify synced keys?</b>  Whoever controls your Google account
+        could swap a synced key's public key for their own.  <b>Verify</b>
+        checks it with the authenticator.
       </p>
     </details>
 

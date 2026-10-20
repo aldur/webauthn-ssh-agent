@@ -88,8 +88,11 @@ for (const [name, verify] of [['yubikey-5c', false], ['backup-key', true]]) {
   await options.click('#create');
   await options.locator('#status').getByText(`"${name}" is ready`).waitFor();
 }
-await options.locator('#keys li', {hasText: 'yubikey-5c'})
-    .getByRole('button', {name: 'Copy public key'}).click();
+await options.locator('#keys tr', {hasText: 'yubikey-5c'})
+    .getByRole('button', {name: 'Copy this key\'s authorized_keys line'})
+    .click();
+// Let the new-key highlight & copy feedback fade.
+await options.waitForTimeout(3500);
 await options.evaluate(() => scrollTo(0, 0));
 await options.screenshot({path: path.join(outDir, 'screenshot-1-keys.png')});
 console.log('store/screenshot-1-keys.png');

@@ -14,26 +14,6 @@ test('findApplication', async () => {
   assert.equal(await findApplication(hash, ['abcdef']), null);
 });
 
-test('kindOf', async () => {
-  const {Kind, kindOf} = await import('../src/keys.js');
-  assert.equal(kindOf('cross-platform', ['usb']), Kind.SECURITY_KEY);
-  assert.equal(kindOf('cross-platform', ['nfc', 'usb']), Kind.SECURITY_KEY);
-  assert.equal(kindOf(null, []), Kind.SECURITY_KEY);
-  assert.equal(kindOf('platform', ['internal']), Kind.PASSKEY);
-  assert.equal(kindOf('cross-platform', ['hybrid', 'internal']), Kind.PASSKEY);
-});
-
-test('describeKey', async () => {
-  const {describeKey} = await import('../src/keys.js');
-  assert.equal(describeKey({kind: 'security-key', resident: false}),
-               'security key');
-  assert.equal(describeKey({kind: 'security-key', resident: true}),
-               'security key, stored on the key');
-  // Keys from before "kind" existed were all on security keys.
-  assert.equal(describeKey({resident: false}), 'security key');
-  assert.equal(describeKey({kind: 'passkey', resident: true}), 'passkey');
-});
-
 const ORIGIN = 'chrome-extension://test';
 const POINT = toBase64Url(new Uint8Array([4, ...new Uint8Array(64).fill(1)]));
 const storedKey = (id, created, extra = {}) => ({
@@ -151,6 +131,51 @@ test('synced keys are unverified until checked on this computer', async () => {
   // Unless the user trusts synced keys.
   local.settings = {trustSyncedKeys: true};
   assert.equal(await isVerified(key), true);
+  delete globalThis.chrome;
+  delete globalThis.location;
+});
+
+test('isMismatched: a security key that turns out backup eligible', async () => {
+  const {isMismatched} = await import('../src/keys.js');
+  const key = (extra) => storedKey('a', 1, extra);
+  assert.equal(isMismatched(key({})), false);
+  assert.equal(isMismatched(key({requested: 'security-key'})), false);
+  assert.equal(isMismatched(
+      key({requested: 'security-key', backupEligible: false})), false);
+  assert.equal(isMismatched(
+      key({requested: 'security-key', backupEligible: true})), true);
+  assert.equal(isMismatched(
+      key({requested: 'passkey', backupEligible: true})), false);
+});
+
+test('renaming & other updates are validated', async () => {
+  const {loadKeys, renameKey, setKeyConfirmation, validateKey} =
+      await import('../src/keys.js');
+  assert.equal(validateKey(storedKey('a', 1, {backedUp: 'yes'}), [ORIGIN]),
+               null);
+  assert.equal(validateKey(storedKey('a', 1, {requested: 'any'}), [ORIGIN]),
+               null);
+  assert.equal(validateKey(storedKey('a', 1, {imported: 1}), [ORIGIN]),
+               null);
+  assert.equal(validateKey(storedKey('a', 1, {attachment: 'usb'}), [ORIGIN]),
+               null);
+  assert.equal(validateKey(storedKey('a', 1, {transports: 'usb'}), [ORIGIN]),
+               null);
+  assert.equal(
+      validateKey(storedKey('a', 1, {transports: ['<b>']}), [ORIGIN]), null);
+  assert.deepEqual(validateKey(storedKey('a', 1, {
+    attachment: 'cross-platform', transports: ['usb', 'nfc'],
+  }), [ORIGIN]).transports, ['usb', 'nfc']);
+  const {sync} = fakeStorage();
+  sync['key:a'] = storedKey('a', 1);
+  let [key] = await loadKeys();
+
+  await renameKey(key, '  new\nname ');
+  [key] = await loadKeys();
+  assert.equal(key.comment, 'new name');
+  await assert.rejects(renameKey(key, ' \n '), /needs a name/);
+  await assert.rejects(setKeyConfirmation(key, 'loud'), /invalid change/);
+  await assert.rejects(renameKey(storedKey('gone', 1), 'x'), /no such key/);
   delete globalThis.chrome;
   delete globalThis.location;
 });

@@ -2,8 +2,8 @@
 
 An SSH agent for Chrome's [Secure Shell] that keeps your SSH keys on a
 **security key** (YubiKey, Titan, …) or a **passkey**, via WebAuthn.  The
-extension never holds a private key, and every login needs your security key
-or passkey.
+extension never has access to a private key, and every login needs your
+security key or passkey.
 
 Works with the regular Secure Shell; no native helpers.  Servers need OpenSSH
 8.4+.
@@ -26,16 +26,17 @@ unpacked** the folder.
 3. Connect, check the request that pops up, click **Continue** (or press
    Enter), and confirm with your security key or passkey.
 
-For direct logins to a verified server, you can choose how much to see: the
-**Confirmation** level, for each key (synced with it) or as a default.
-**Review** (the default) shows the request and waits for Continue, **Show**
-opens the security key or passkey prompt right away with the request beside
-it, and **Silent** only shows the prompt.  A key's own level applies once
-it's verified on this computer.  Other requests are always reviewed.
+For direct logins to a verified server, the **Confirmation** level (per key,
+synced, or a default) sets how much you see: **Review** (the default) shows
+the request and waits for Continue, **Show** opens the prompt right away with
+the request beside it, and **Silent** only shows the prompt.  A key's own
+level applies once it's verified on this computer.  Other requests are always
+reviewed.
 
-Agent forwarding (`ssh -A`) works, with an extra confirmation per login.  The
-`ssh` on the server you forward from must be OpenSSH 10.3+: older versions
-reject the WebAuthn signatures a browser makes when they come from an agent.
+Agent forwarding (`ssh -A`) works, with an extra confirmation per login.  On
+the server you forward the agent to, `ssh` must be OpenSSH 10.3+: older
+versions reject the WebAuthn signatures a browser makes when they come from an
+agent.
 
 ## Supported authenticators
 
@@ -45,7 +46,7 @@ Everything goes through WebAuthn, so any authenticator Chrome supports works:
 |---|---|
 | **U2F-only security key** (older keys) | Non-discoverable keys, and a touch to log in: U2F has no discoverable keys and no PIN or fingerprint. |
 | **FIDO2 security key** (YubiKey 5, Titan, SoloKey, Nitrokey, …) | Everything: optional discoverable keys, and a PIN or fingerprint for every login, enforced by the security key itself. |
-| **Passkey** (Google Password Manager, iCloud Keychain, Windows Hello, a phone, …) | Always discoverable, held (and usually synced) by the provider, unlocked with your screen lock or biometrics. |
+| **Passkey** (Google Password Manager, iCloud Keychain, Windows Hello, a phone, …) | Always discoverable, usually synced, unlocked with your screen lock or biometrics. |
 
 Keys are ECDSA P-256 only: OpenSSH's WebAuthn signature format doesn't exist
 for Ed25519.  Keys made with `ssh-keygen -t ecdsa-sk` can't be used (they're
@@ -54,21 +55,32 @@ security key can hold both.
 
 ## Where keys live
 
+*Security key* and *passkey* are everyday names; the key list uses WebAuthn's
+terms.  Here, a security key is a cross-platform authenticator whose
+credentials are single-device: bound to it, so only it can use the private
+key.  A passkey is a discoverable credential on a platform authenticator or
+phone, usually multi-device: it can sync.
+
 | | Security key | Security key, stored on the key | Passkey |
 |---|---|---|---|
-| **Private key** | Stored encrypted in your Chrome profile (synced); only that specific security key can decrypt and use it | Stored in one of the security key's slots (a *discoverable credential*, or *resident key*) | Held by the passkey provider (may sync) |
-| **Login needs** | The security key + the synced credential ID | The security key | The passkey provider |
-| **How to use on a new computer** | Appears through Chrome sync; plug in the security key | Appears through Chrome sync, or **Import** with the security key | Appears through Chrome sync, or **Import**; the passkey must be available there (synced by the provider, or on your phone) |
+| **Private key** | Stored encrypted in your Chrome profile (synced); only that specific security key can decrypt and use it | Stored in one of the security key's slots (a *discoverable credential*, or *resident key*) | Held by the platform authenticator or phone (may sync) |
+| **Login needs** | The security key + the synced credential ID | The security key | The platform authenticator or phone |
+| **How to use on a new computer** | Appears through Chrome sync; plug in the security key | Appears through Chrome sync, or **Import** with the security key | Appears through Chrome sync, or **Import**; the passkey must be available there (synced, or on your phone) |
+| **Key list shows** | Cross-platform, Single-device | Cross-platform, Discoverable, Single-device | Platform (Cross-platform for a phone), Discoverable, usually backed up (✓) |
 
-The extension stores only the public key and credential ID, synced with your
-Chrome profile.  For a key not stored on the security key, the credential ID
-is the encrypted private key: neither it nor the security key works without
-the other.
+**Add a key** asks Chrome for one of these, but its prompt can offer
+something else: the key list shows what you got, in red if you wanted a
+security key and got a multi-device key.
 
-**Require a PIN or fingerprint** adds `verify-required` to the
-`authorized_keys` line, and asks the security key to enforce it too
-(`credProtect`).  The key list says "enforced by servers only" if the security
-key didn't confirm it.
+The extension stores only public data (public key, credential ID, name),
+synced with your Chrome profile.  For a key not stored on the security key,
+the credential ID is the encrypted private key: neither it nor the security
+key works without the other.
+
+**Require a PIN or fingerprint** (*user verification*, UV in the key list)
+adds `verify-required` to the `authorized_keys` line, and asks the
+authenticator to enforce it too (`credProtect`).  A grey ✓ means it didn't
+confirm, so only servers enforce it.
 
 ## Security
 
@@ -81,9 +93,9 @@ key didn't confirm it.
   and file signatures (e.g. git commits), come with a warning.  Anything else
   is refused unless you allow it.
 * Keys sync through your Google account, so whoever controls it could swap
-  in their own public key, which you'd then add to your servers.  Synced
-  keys show as *not verified* until you **Verify** them (or
-  turn on **Trust keys synced**).
+  in their own public key for you to add to your servers.  A synced key
+  needs a one-time **Verify** on each computer (or turn on **Trust keys
+  synced**); until then its own confirmation level is ignored.
 * Only the `storage` permission, a strict content security policy, no
   dependencies.
 

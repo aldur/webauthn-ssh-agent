@@ -76,9 +76,15 @@ const USER_HANDLE_NAME_BYTES = USER_HANDLE_MAX_BYTES - USER_HANDLE_RANDOM_BYTES 
 
 /** authenticatorData flags. */
 const FLAG_UV = 0x04;
+/** Backup eligible: the credential can be synced. */
+const FLAG_BE = 0x08;
+/** Backed up: the credential is synced. */
+const FLAG_BS = 0x10;
+
 
 /**
- * What to create the key on.
+ * What to create the key on.  It only steers the browser's dialog: what
+ * the user gets is told by the authenticator's attachment & flags.
  *
  * @enum {string}
  */
@@ -90,14 +96,29 @@ export const Kind = {
 };
 
 /**
+ * PublicKeyCredential.authenticatorAttachment.
+ *
+ * @enum {string}
+ */
+export const Attachment = {
+  PLATFORM: 'platform',
+  CROSS_PLATFORM: 'cross-platform',
+};
+
+/**
  * A key the user set up.  Binary fields are base64url.
  *
- * kind is where the key actually ended up (the user may pick something else
- * in the browser's dialog than we asked for).  resident is whether it's a
- * discoverable credential.  verify is whether every use needs user
- * verification; verifyEnforcedByKey whether the authenticator itself
- * confirmed it enforces that (CTAP credProtect), not just the servers.
- * confirmation is the key's own confirmation level, if not the default.
+ * What the authenticator reported: attachment (as of the last use;
+ * undefined for older keys until then), transports (when created), resident
+ * (a discoverable credential), and backupEligible & backedUp (its BE & BS
+ * flags, as of the last use).
+ *
+ * verify is whether every use needs user verification; verifyEnforcedByKey
+ * whether the authenticator itself confirmed it enforces that (CTAP
+ * credProtect), not just the servers.  confirmation is the key's own
+ * confirmation level, if not the default.  requested is the kind the user
+ * asked for when creating it.  imported is whether it was imported rather
+ * than created (created is then when it was imported).
  *
  * @typedef {{
  *   credentialId: string,
@@ -105,11 +126,16 @@ export const Kind = {
  *   application: string,
  *   comment: string,
  *   created: number,
- *   kind: (!Kind|undefined),
  *   resident: boolean,
  *   verify: boolean,
  *   verifyEnforcedByKey: (boolean|undefined),
  *   confirmation: (!Confirmation|undefined),
+ *   requested: (!Kind|undefined),
+ *   imported: (boolean|undefined),
+ *   attachment: (!Attachment|undefined),
+ *   transports: (!Array<string>|undefined),
+ *   backupEligible: (boolean|undefined),
+ *   backedUp: (boolean|undefined),
  * }}
  */
 export let StoredKey;
@@ -159,20 +185,12 @@ async function applicationFromAuthData(authData) {
 }
 
 /**
- * Work out where a credential lives from what the browser reports.
- *
- * @param {?string} attachment PublicKeyCredential.authenticatorAttachment.
- * @param {!Array<string>} transports How the authenticator is reached.
- * @return {!Kind}
+ * @param {*} attachment As the browser reported it.
+ * @return {(!Attachment|undefined)} Undefined if it's not one we know.
  */
-export function kindOf(attachment, transports) {
-  // Platform authenticators (the OS or a password manager) & phones ("hybrid")
-  // hold passkeys; anything else roaming (USB, NFC, BLE) is a security key.
-  if (attachment === 'platform' || transports.includes('hybrid') ||
-      transports.includes('internal')) {
-    return Kind.PASSKEY;
-  }
-  return Kind.SECURITY_KEY;
+function knownAttachment(attachment) {
+  return Object.values(Attachment).includes(attachment) ? attachment :
+                                                           undefined;
 }
 
 /**
@@ -193,9 +211,18 @@ export function validateKey(raw, applications) {
       !applications.includes(raw.application) || typeof raw.comment !== 'string' ||
       !Number.isFinite(raw.created) || typeof raw.resident !== 'boolean' ||
       typeof raw.verify !== 'boolean' ||
+      // (Older versions stored a guessed kind: accepted, & dropped.)
       ![undefined, ...Object.values(Kind)].includes(raw.kind) ||
       ![undefined, true, false].includes(raw.verifyEnforcedByKey) ||
-      ![undefined, ...Object.values(Confirmation)].includes(raw.confirmation)) {
+      ![undefined, ...Object.values(Confirmation)].includes(raw.confirmation) ||
+      ![undefined, ...Object.values(Kind)].includes(raw.requested) ||
+      ![undefined, true, false].includes(raw.imported) ||
+      ![undefined, ...Object.values(Attachment)].includes(raw.attachment) ||
+      !(raw.transports === undefined ||
+        Array.isArray(raw.transports) && raw.transports.length <= 8 &&
+        raw.transports.every((t) => /^[a-z-]{1,32}$/.test(t))) ||
+      ![undefined, true, false].includes(raw.backupEligible) ||
+      ![undefined, true, false].includes(raw.backedUp)) {
     return null;
   }
   let point;
@@ -213,12 +240,80 @@ export function validateKey(raw, applications) {
     application: raw.application,
     comment: cleanName(raw.comment) || 'key',
     created: raw.created,
-    kind: raw.kind,
     resident: raw.resident,
     verify: raw.verify,
     verifyEnforcedByKey: raw.verifyEnforcedByKey,
     confirmation: raw.confirmation,
+    requested: raw.requested,
+    imported: raw.imported,
+    attachment: raw.attachment,
+    transports: raw.transports && [...raw.transports],
+    backupEligible: raw.backupEligible,
+    backedUp: raw.backedUp,
   };
+}
+
+/**
+ * @param {!StoredKey} key
+ * @return {boolean} Whether the user asked for a security key but got a
+ *     credential that can be backed up (backup eligible).
+ */
+export function isMismatched(key) {
+  return key.requested === Kind.SECURITY_KEY && !!key.backupEligible;
+}
+
+/**
+ * Remember what the authenticator last reported, if it changed: its
+ * attachment, & its backup flags (BS changes, e.g. once a provider syncs
+ * the key).
+ *
+ * @param {!StoredKey} key
+ * @param {{authenticatorData: !Uint8Array, attachment: ?string}} assertion
+ * @return {!Promise<void>}
+ */
+async function updateReported(key, {authenticatorData, attachment}) {
+  const changes = {
+    attachment: knownAttachment(attachment) ?? key.attachment,
+    backupEligible: !!(authenticatorData[32] & FLAG_BE),
+    backedUp: !!(authenticatorData[32] & FLAG_BS),
+  };
+  if (Object.entries(changes).some(([name, value]) => key[name] !== value)) {
+    await updateKey(key, changes);
+  }
+}
+
+/**
+ * Change some of a stored key's fields.  The result is validated like any
+ * stored key.
+ *
+ * @param {!StoredKey} key
+ * @param {!Object} changes Fields to set (undefined removes one).
+ * @return {!Promise<void>}
+ */
+async function updateKey(key, changes) {
+  const name = STORAGE_PREFIX + key.credentialId;
+  const {origin, hostname} = globalThis.location;
+  const applications = [origin, hostname];
+  const stored = validateKey(
+      (await chrome.storage.sync.get(name))[name], applications);
+  const updated = stored && validateKey({...stored, ...changes}, applications);
+  if (!updated) {
+    throw new Error(stored ? 'invalid change' : 'no such key');
+  }
+  await chrome.storage.sync.set({[name]: updated});
+}
+
+/**
+ * @param {!StoredKey} key
+ * @param {string} comment Its new name.
+ * @return {!Promise<void>}
+ */
+export async function renameKey(key, comment) {
+  comment = cleanName(comment);
+  if (!comment) {
+    throw new Error('the key needs a name');
+  }
+  await updateKey(key, {comment});
 }
 
 /** @return {!Promise<!Array<!StoredKey>>} Valid keys, oldest first. */
@@ -312,19 +407,7 @@ async function addKey(key) {
  * @return {!Promise<void>}
  */
 export async function setKeyConfirmation(key, confirmation) {
-  if (confirmation !== null &&
-      !Object.values(Confirmation).includes(confirmation)) {
-    throw new Error(`invalid confirmation level ${confirmation}`);
-  }
-  const name = STORAGE_PREFIX + key.credentialId;
-  const {origin, hostname} = globalThis.location;
-  const stored = validateKey(
-      (await chrome.storage.sync.get(name))[name], [origin, hostname]);
-  if (!stored) {
-    throw new Error('no such key');
-  }
-  stored.confirmation = confirmation ?? undefined;
-  await chrome.storage.sync.set({[name]: stored});
+  await updateKey(key, {confirmation: confirmation ?? undefined});
 }
 
 /**
@@ -381,12 +464,14 @@ export function keyAuthorizedKeysLine(key) {
  *     pick something else).  resident: for security keys, store the key on it
  *     as a discoverable credential so it can be imported elsewhere (passkeys
  *     always are).  verify: require user verification (PIN/biometric), not
- *     just a touch, for every use.
+ *     just a touch, for every use.  keep: called with the new key before
+ *     saving it; resolves to whether to keep it (if not, createKey rejects
+ *     with "not kept", the error's key property being the new key).
  * @return {!Promise<!StoredKey>}
  */
 export async function createKey(
-    comment, {kind = Kind.SECURITY_KEY, resident = false, verify = false} =
-        {}) {
+    comment, {kind = Kind.SECURITY_KEY, resident = false, verify = false,
+              keep = async () => true} = {}) {
   comment = cleanName(comment);
   if (!comment) {
     throw new Error('the key needs a name');
@@ -439,8 +524,7 @@ export async function createKey(
   }
 
   // Record where the key really is, not what we asked for.
-  const actualKind = kindOf(credential.authenticatorAttachment,
-                            response.getTransports?.() ?? []);
+  const backupEligible = !!(authData[32] & FLAG_BE);
   const extensionResults = credential.getClientExtensionResults?.() ?? {};
   const rk = extensionResults.credProps?.rk;
 
@@ -452,15 +536,23 @@ export async function createKey(
     application: await applicationFromAuthData(authData),
     comment,
     created: Date.now(),
-    kind: actualKind,
+    attachment: knownAttachment(credential.authenticatorAttachment),
+    transports: (response.getTransports?.() ?? [])
+        .filter((t) => /^[a-z-]{1,32}$/.test(t)).slice(0, 8),
     // Passkey providers always make discoverable credentials.
-    resident: rk ?? (resident || actualKind === Kind.PASSKEY),
+    resident: rk ?? (resident || passkey),
     verify,
     // Whether the authenticator confirmed it will refuse to use the key
     // without user verification; otherwise only servers enforce it.
     verifyEnforcedByKey:
         verify && extensionResults.credProtect === 'userVerificationRequired',
+    requested: kind,
+    backupEligible,
+    backedUp: !!(authData[32] & FLAG_BS),
   };
+  if (!await keep(key)) {
+    throw Object.assign(new Error('not kept'), {key});
+  }
   await addKey(key);
   return key;
 }
@@ -520,6 +612,9 @@ export async function sign(key, data) {
                   await sha256(key.application))) {
     throw new Error('RP ID hash mismatch');
   }
+  await updateReported(key, assertion).catch(
+      (e) => console.warn('could not update what the authenticator reported:',
+                          e));
   return webauthnAssertionToSshSignature(assertion);
 }
 
@@ -576,6 +671,7 @@ export async function importKey(onSecondTouch = () => {}) {
     throw new Error('unable to recover the public key');
   }
 
+  const backupEligible = !!(first.authenticatorData[32] & FLAG_BE);
   const userHandle = first.userHandle ?? new Uint8Array(0);
   const flags = userHandle[USER_HANDLE_RANDOM_BYTES] ?? 0;
   const comment = cleanName(new TextDecoder().decode(
@@ -588,11 +684,14 @@ export async function importKey(onSecondTouch = () => {}) {
     application: await applicationFromAuthData(first.authenticatorData),
     comment,
     created: Date.now(),
-    kind: kindOf(first.attachment, []),
+    attachment: knownAttachment(first.attachment),
     resident: true,
     verify: !!(flags & USER_HANDLE_FLAG_VERIFY),
     // We can't tell after the fact; assume only servers enforce it.
     verifyEnforcedByKey: false,
+    imported: true,
+    backupEligible,
+    backedUp: !!(first.authenticatorData[32] & FLAG_BS),
   };
   await addKey(key);
   return key;
@@ -621,15 +720,5 @@ export async function verifyKey(key) {
     throw new Error('the stored public key does not match the security key');
   }
   await recordVerified(key);
-}
-
-/**
- * @param {!StoredKey} key
- * @return {string} A short description of where the key lives, for humans.
- */
-export function describeKey(key) {
-  if (key.kind === Kind.PASSKEY) {
-    return 'passkey';
-  }
-  return key.resident ? 'security key, stored on the key' : 'security key';
+  await updateReported(key, assertion);
 }

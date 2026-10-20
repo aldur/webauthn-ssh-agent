@@ -8,8 +8,6 @@
  * this only shows them, as text.
  */
 
-import {describeKey} from './keys.js';
-
 /**
  * Fill in the page's #facts & #warning, and its title.
  *
@@ -34,7 +32,7 @@ export function showRequest({caller, fields, key}) {
   }
   add('Server', fields.server);
   add('Route', fields.route);
-  add('With key', `${key.comment} (${describeKey(key)})`);
+  add('With key', key.comment);
 
   // Window title bars show this too.
   document.title = [

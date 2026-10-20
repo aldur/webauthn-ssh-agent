@@ -65,11 +65,10 @@ async function trySign(request) {
           {type: 'show-details', id, bounds: detailsBounds()});
     }
   } else {
-    const device =
-        request.key.kind === 'passkey' ? 'passkey' : 'security key';
     $('status').textContent = request.key.verify ?
-        `Confirm with your ${device} (touch & PIN or fingerprint)…` :
-        `Confirm with your ${device}…`;
+        'Confirm with your security key or passkey, with your PIN or ' +
+            'fingerprint…' :
+        'Confirm with your security key or passkey…';
   }
   try {
     const signature =
