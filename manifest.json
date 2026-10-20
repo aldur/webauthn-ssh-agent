@@ -15,9 +15,7 @@
     "service_worker": "src/background.js",
     "type": "module"
   },
-  "action": {
-    "default_title": "Manage keys and settings"
-  },
+  "action": {},
   "options_ui": {
     "page": "src/manage.html",
     "open_in_tab": true
