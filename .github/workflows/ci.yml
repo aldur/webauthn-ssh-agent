@@ -9,6 +9,9 @@
 #   * Otherwise refresh the rolling "latest" pre-release, a development build
 #     versioned <manifest.json's version>.<run number>.
 #
+# What's published is packaged in its own job, from a fresh checkout with
+# only the runner's own tools: the test job runs code from npm (Playwright)
+# & upstream Secure Shell, which mustn't get a chance to alter the zips.
 # Third-party actions are pinned to commit hashes.
 name: CI
 
@@ -55,8 +58,16 @@ jobs:
       - name: End-to-end test
         run: ./test/e2e/run.sh
 
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       # The dev build keeps the manifest "key" (fixed extension ID); the
-      # Store build doesn't (the Store assigns the ID).
+      # Store build doesn't (the Store assigns the ID).  Only needs bash, jq,
+      # zip & gh, which the runner has.
       - name: Package
         id: package
         env:
@@ -93,8 +104,9 @@ jobs:
       version: ${{ steps.package.outputs.version }}
       release: ${{ steps.package.outputs.release }}
 
+  # Publishes the package job's zips, once the tests pass too.
   release:
-    needs: test
+    needs: [test, package]
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     permissions:
@@ -102,12 +114,12 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      NAME: ${{ needs.test.outputs.name }}
-      VERSION: ${{ needs.test.outputs.version }}
+      NAME: ${{ needs.package.outputs.name }}
+      VERSION: ${{ needs.package.outputs.version }}
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: ${{ needs.test.outputs.name }}
+          name: ${{ needs.package.outputs.name }}
 
       - name: Write release notes
         run: |
@@ -137,14 +149,14 @@ jobs:
           EOF
 
       - name: Publish release
-        if: needs.test.outputs.release == 'true'
+        if: needs.package.outputs.release == 'true'
         run: |
           gh release create "v$VERSION" *.zip --target "$GITHUB_SHA" \
               --latest --title "WebAuthn SSH Agent $VERSION" \
               --notes-file notes.md
 
       - name: Update rolling "latest" pre-release
-        if: needs.test.outputs.release != 'true'
+        if: needs.package.outputs.release != 'true'
         run: |
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest *.zip --target "$GITHUB_SHA" \
