@@ -86,6 +86,8 @@ ctx.on('page', async (page) => {
 
 /** Whether the next touch window's prompt should fail, as if cancelled. */
 let failNextPrompt = false;
+/** Whether to close the next touch window instead. */
+let closeNextWindow = false;
 
 ctx.on('page', async (page) => {
   if (!page.url().includes('/src/sign.html')) {
@@ -93,6 +95,12 @@ ctx.on('page', async (page) => {
   }
   const fail = failNextPrompt;
   failNextPrompt = false;
+  if (closeNextWindow) {
+    closeNextWindow = false;
+    await page.waitForSelector('#facts dt').catch(() => {});
+    await page.close();
+    return;
+  }
   const shown = {facts: null};
   const first = signWindows.push(shown) === 1;
   // Record what it shows (it closes soon after signing): the labelled facts,
@@ -334,6 +342,14 @@ if (failNextPrompt) {
   throw new Error('no touch window to cancel');
 }
 console.log('a cancelled prompt skipped to the next key');
+
+// So does closing the touch window.
+closeNextWindow = true;
+await login('CLOSED');
+if (closeNextWindow) {
+  throw new Error('no touch window to close');
+}
+console.log('closing the touch window skipped to the next key');
 
 await ctx.close();
 console.log('PASS');

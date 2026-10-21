@@ -138,13 +138,18 @@ function signInWindow(key, data, connection, decision, fields) {
   return result;
 }
 
-// Closing the window cancels its request.
-chrome.windows.onRemoved.addListener((windowId) => {
-  for (const request of pending.values()) {
-    if (request.windowId === windowId) {
-      request.reject(new Error('cancelled'));
-    }
+// Closing a touch window cancels its request: the window keeps a port open,
+// which closes with it.  (Unlike chrome.windows.onRemoved, this doesn't wake
+// the service worker whenever any window closes.)
+chrome.runtime.onConnect.addListener((port) => {
+  const url = port.sender?.url ?? '';
+  if (port.sender?.id !== chrome.runtime.id ||
+      !url.startsWith(chrome.runtime.getURL('src/sign.html'))) {
+    return;
   }
+  const id = new URL(url).hash.slice(1);
+  port.onDisconnect.addListener(
+      () => pending.get(id)?.reject(new Error('cancelled')));
 });
 
 /**

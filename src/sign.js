@@ -24,6 +24,10 @@ const DETAILS_MIN_HEIGHT = 420;
 const id = location.hash.slice(1);
 const $ = (elementId) => document.getElementById(elementId);
 
+// Closing this window cancels the request: the background page sees this
+// port close.
+chrome.runtime.connect({name: 'sign'});
+
 /**
  * Report the result to the background page, which closes this window.
  *
