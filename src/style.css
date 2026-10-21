@@ -143,12 +143,17 @@ body.manage .scroll {
 }
 
 .keys button.grip {
-  background: none;
+  /* Two columns of three dots, drawn rather than typed: fonts' "⋮" differ
+     in width. */
+  background: radial-gradient(circle, GrayText 1.2px, transparent 1.6px)
+      0 0 / 5px 5px;
   border: none;
-  color: GrayText;
   cursor: grab;
-  letter-spacing: -0.3em;
-  padding: 0 0.4em 0 0;
+  height: 15px;
+  margin: 0 0.3em 0 0;
+  padding: 0;
+  vertical-align: middle;
+  width: 10px;
 }
 
 /* Where a dragged key will land. */

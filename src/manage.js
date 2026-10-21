@@ -31,8 +31,8 @@ const LEVELS = {
  */
 const COLUMNS = [
   ['', ''],  // Drag handle.
-  ['Name', 'Keys are offered to servers in this order: drag ⋮⋮ (or ' +
-           'Alt+↑/↓ on it) to change it.'],
+  ['Name', 'Keys are offered to servers in this order: drag a row by its ' +
+           'handle (or Alt+↑/↓ on it) to change it.'],
   ['Attachment', 'authenticatorAttachment, as last reported.\n' +
                  'Platform: built into the computer (OS or browser).\n' +
                  'Cross-platform: roaming, e.g. a security key (USB, NFC, ' +
@@ -286,7 +286,7 @@ function renderGrip(key) {
   if (order.length < 2) {
     return td;
   }
-  const grip = element('button', 'grip', '⋮⋮',
+  const grip = element('button', 'grip', '',
       'Drag to reorder (or Alt+↑/↓): keys are offered to servers in this ' +
       'order');
   grip.draggable = true;

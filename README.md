@@ -33,7 +33,7 @@ the request beside it, and **Silent** only shows the prompt.  A key's own
 level applies once it's verified on this computer.  Other requests are always
 reviewed.
 
-Keys are offered to servers in the key list's order: drag a row's ⋮⋮ handle
+Keys are offered to servers in the key list's order: drag a row by its handle
 to change it.
 
 Agent forwarding (`ssh -A`) works, with an extra confirmation per login.  On
