@@ -139,6 +139,28 @@ body.manage .scroll {
   white-space: nowrap;
 }
 
+.keys td.grip {
+  padding-right: 0.2em;
+}
+
+.keys button.grip {
+  background: none;
+  border: none;
+  color: GrayText;
+  cursor: grab;
+  letter-spacing: -0.3em;
+  padding: 0 0.4em 0 0;
+}
+
+/* Where a dragged key will land. */
+.keys tr.drop-before td {
+  box-shadow: inset 0 2px 0 CanvasText;
+}
+
+.keys tr.drop-after td {
+  box-shadow: inset 0 -2px 0 CanvasText;
+}
+
 .keys th[data-tip] {
   cursor: help;
 }

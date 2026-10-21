@@ -6,8 +6,8 @@
 
 import {
   Attachment, Kind, createKey, deleteKey, importKey, isMismatched, isVerified,
-  keyAuthorizedKeysLine, keyBlob, loadKeys, renameKey, setKeyConfirmation,
-  verifyKey,
+  keyAuthorizedKeysLine, keyBlob, loadKeys, renameKey, reorderKeys,
+  setKeyConfirmation, verifyKey,
 } from './keys.js';
 import {AAGUID_NAMES} from './aaguids.js';
 import {loadSettings, saveSetting} from './settings.js';
@@ -88,7 +88,9 @@ function renderLevel(key, verified) {
  * The key list's columns: heading, & what it means (shown on hover).
  */
 const COLUMNS = [
-  ['Name', ''],
+  ['', ''],  // Drag handle.
+  ['Name', 'Keys are offered to servers in this order: drag ⋮⋮ (or ' +
+           'Alt+↑/↓ on it) to change it.'],
   ['Attachment', 'authenticatorAttachment, as last reported.\n' +
                  'Platform: built into the computer (OS or browser).\n' +
                  'Cross-platform: roaming, e.g. a security key (USB, NFC, ' +
@@ -208,6 +210,87 @@ function renderName(key, keyFingerprint) {
   };
   td.append(name);
   return td;
+}
+
+/** The keys' IDs, in the list's order. */
+let order = [];
+/** A key whose drag handle to focus once the list redraws. */
+let focusAfterLoad = null;
+
+/**
+ * Move a key in the list.
+ *
+ * @param {string} id
+ * @param {number} index Where to, in the list without it.
+ */
+function moveKey(id, index) {
+  const ids = order.filter((other) => other !== id);
+  ids.splice(Math.max(0, Math.min(index, ids.length)), 0, id);
+  reorderKeys(ids);  // The list reloads.
+}
+
+/**
+ * @param {!Object} key A StoredKey.
+ * @return {!Element} A handle to drag the row by (or move it with Alt+↑/↓).
+ */
+function renderGrip(key) {
+  const td = element('td', 'grip');
+  if (order.length < 2) {
+    return td;
+  }
+  const grip = element('button', 'grip', '⋮⋮',
+      'Drag to reorder (or Alt+↑/↓): keys are offered to servers in this ' +
+      'order');
+  grip.draggable = true;
+  grip.ondragstart = (e) => {
+    e.dataTransfer.setData('application/x-key', key.credentialId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setDragImage(grip.closest('tr'), 0, 0);
+  };
+  grip.onkeydown = (e) => {
+    const step = {ArrowUp: -1, ArrowDown: 1}[e.key];
+    if (e.altKey && step) {
+      e.preventDefault();
+      focusAfterLoad = key.credentialId;
+      moveKey(key.credentialId, order.indexOf(key.credentialId) + step);
+    }
+  };
+  td.append(grip);
+  return td;
+}
+
+/**
+ * Let a row take dropped keys, before or after it.
+ *
+ * @param {!Element} tr
+ * @param {string} id Its key's ID.
+ */
+function acceptDrops(tr, id) {
+  const before = (e) => {
+    const box = tr.getBoundingClientRect();
+    return e.clientY < box.top + box.height / 2;
+  };
+  const clear = () => tr.classList.remove('drop-before', 'drop-after');
+  tr.ondragover = (e) => {
+    if (!e.dataTransfer.types.includes('application/x-key')) {
+      return;
+    }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    clear();
+    tr.classList.add(before(e) ? 'drop-before' : 'drop-after');
+  };
+  tr.ondragleave = clear;
+  tr.ondrop = (e) => {
+    const dragged = e.dataTransfer.getData('application/x-key');
+    clear();
+    if (!dragged || dragged === id) {
+      return;
+    }
+    e.preventDefault();
+    const at = order.filter((other) => other !== dragged).indexOf(id);
+    moveKey(dragged, before(e) ? at : at + 1);
+  };
 }
 
 /** For what the authenticator hasn't reported yet (older keys). */
@@ -370,7 +453,9 @@ function renderKey(key, verified, keyFingerprint) {
   level.append(select);
 
   const tr = element('tr', key.credentialId === highlight ? 'key new' : 'key');
+  acceptDrops(tr, key.credentialId);
   tr.append(
+      renderGrip(key),
       renderName(key, keyFingerprint),
       renderAttachment(key),
       renderAaguid(key),
@@ -437,6 +522,7 @@ async function load() {
   const fingerprints =
       await Promise.all(keys.map((key) => fingerprint(keyBlob(key))));
   showTip(null);  // Its target is about to go.
+  order = keys.map((key) => key.credentialId);
   if (!keys.length) {
     const td = element('td', 'empty', 'No keys yet.  Add one below.');
     td.colSpan = COLUMNS.length;
@@ -448,6 +534,11 @@ async function load() {
   $('keys').replaceChildren(
       renderHead(),
       ...keys.map((key, i) => renderKey(key, verified[i], fingerprints[i])));
+  if (focusAfterLoad) {
+    const row = keys.findIndex((key) => key.credentialId === focusAfterLoad);
+    focusAfterLoad = null;
+    $('keys').querySelectorAll('button.grip')[row]?.focus();
+  }
 }
 
 /**

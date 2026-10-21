@@ -126,7 +126,10 @@ export const Attachment = {
  * credProtect), not just the servers.  confirmation is the key's own
  * confirmation level, if not the default.  requested is the kind the user
  * asked for when creating it.  imported is whether it was imported rather
- * than created (created is then when it was imported).
+ * than created (created is then when it was imported).  order is its place
+ * in the list, which is the order keys are offered to servers: keys without
+ * one come last, & ties (e.g. from reordering on two computers at once) go
+ * by age.
  *
  * @typedef {{
  *   credentialId: string,
@@ -140,6 +143,7 @@ export const Attachment = {
  *   confirmation: (!Confirmation|undefined),
  *   requested: (!Kind|undefined),
  *   imported: (boolean|undefined),
+ *   order: (number|undefined),
  *   attachment: (!Attachment|undefined),
  *   transports: (!Array<string>|undefined),
  *   aaguid: (string|undefined),
@@ -270,6 +274,8 @@ export function validateKey(raw, applications) {
       ![undefined, ...Object.values(Confirmation)].includes(raw.confirmation) ||
       ![undefined, ...Object.values(Kind)].includes(raw.requested) ||
       ![undefined, true, false].includes(raw.imported) ||
+      !(raw.order === undefined ||
+        Number.isSafeInteger(raw.order) && raw.order >= 0) ||
       ![undefined, ...Object.values(Attachment)].includes(raw.attachment) ||
       !(raw.transports === undefined ||
         Array.isArray(raw.transports) && raw.transports.length <= 8 &&
@@ -301,6 +307,7 @@ export function validateKey(raw, applications) {
     confirmation: raw.confirmation,
     requested: raw.requested,
     imported: raw.imported,
+    order: raw.order,
     attachment: raw.attachment,
     transports: raw.transports && [...raw.transports],
     aaguid: raw.aaguid,
@@ -372,7 +379,10 @@ export async function renameKey(key, comment) {
   await updateKey(key, {comment});
 }
 
-/** @return {!Promise<!Array<!StoredKey>>} Valid keys, oldest first. */
+/**
+ * @return {!Promise<!Array<!StoredKey>>} Valid keys, in the user's order
+ *     (see StoredKey).
+ */
 export async function loadKeys() {
   const {origin, hostname} = globalThis.location;
   const applications = [origin, hostname];
@@ -404,7 +414,23 @@ export async function loadKeys() {
       console.warn('ignoring a malformed stored key', raw);
     }
   }
-  return [...keys.values()].sort((a, b) => a.created - b.created);
+  const place = (key) => key.order ?? Infinity;
+  return [...keys.values()].sort((a, b) =>
+    place(a) === place(b) ? a.created - b.created : place(a) - place(b));
+}
+
+/**
+ * Put the keys in this order, numbering them all afresh.
+ *
+ * @param {!Array<string>} credentialIds
+ * @return {!Promise<void>}
+ */
+export async function reorderKeys(credentialIds) {
+  const keys =
+      new Map((await loadKeys()).map((key) => [key.credentialId, key]));
+  await chrome.storage.sync.set(Object.fromEntries(
+      credentialIds.filter((id) => keys.has(id)).map((id, order) =>
+        [STORAGE_PREFIX + id, {...keys.get(id), order}])));
 }
 
 /**

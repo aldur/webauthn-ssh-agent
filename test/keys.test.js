@@ -227,6 +227,28 @@ test('isMismatched: a security key that turns out backup eligible', async () => 
       key({requested: 'passkey', backupEligible: true})), false);
 });
 
+test('key order: as the user set it, then by age', async () => {
+  const {loadKeys, reorderKeys, validateKey} = await import('../src/keys.js');
+  assert.equal(validateKey(storedKey('a', 1, {order: -1}), [ORIGIN]), null);
+  assert.equal(validateKey(storedKey('a', 1, {order: 0.5}), [ORIGIN]), null);
+  const {sync} = fakeStorage();
+  const ids = async () => (await loadKeys()).map((k) => k.credentialId);
+  // Without an order (older keys), by age.
+  sync['key:a'] = storedKey('a', 1);
+  sync['key:b'] = storedKey('b', 2);
+  sync['key:c'] = storedKey('c', 3);
+  assert.deepEqual(await ids(), ['a', 'b', 'c']);
+  await reorderKeys(['c', 'a', 'b', 'gone']);
+  assert.deepEqual(await ids(), ['c', 'a', 'b']);
+  assert.deepEqual([sync['key:c'].order, sync['key:a'].order], [0, 1]);
+  // A new key comes last; clashes (e.g. from two computers) go by age.
+  sync['key:d'] = storedKey('d', 0);
+  sync['key:b'].order = 0;
+  assert.deepEqual(await ids(), ['b', 'c', 'a', 'd']);
+  delete globalThis.chrome;
+  delete globalThis.location;
+});
+
 test('renaming & other updates are validated', async () => {
   const {loadKeys, renameKey, setKeyConfirmation, validateKey} =
       await import('../src/keys.js');
