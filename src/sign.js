@@ -77,7 +77,12 @@ async function trySign(request) {
     $('status').textContent = 'Done.';
     finish({signature: Array.from(signature)});
   } catch (e) {
-    // E.g. the user dismissed Chrome's dialog, or it timed out.
+    // The user dismissed Chrome's prompt (or it timed out: Chrome doesn't
+    // say which): skip this key, so ssh can try the next one.
+    if (e.name === 'NotAllowedError') {
+      finish({error: 'cancelled in Chrome\'s prompt'});
+      return;
+    }
     if (request.decision === 'silent') {
       // Say what failed.
       showRequest(request);
@@ -100,7 +105,7 @@ function showContinue() {
   $('continue').focus();  // Enter continues.
 }
 
-$('cancel').onclick = () => finish({error: 'cancelled by the user'});
+$('skip').onclick = () => finish({error: 'skipped by the user'});
 $('deny').onclick = () =>
   chrome.runtime.sendMessage({type: 'deny-connection', id});
 

@@ -84,10 +84,15 @@ ctx.on('page', async (page) => {
   }
 });
 
+/** Whether the next touch window's prompt should fail, as if cancelled. */
+let failNextPrompt = false;
+
 ctx.on('page', async (page) => {
   if (!page.url().includes('/src/sign.html')) {
     return;
   }
+  const fail = failNextPrompt;
+  failNextPrompt = false;
   const shown = {facts: null};
   const first = signWindows.push(shown) === 1;
   // Record what it shows (it closes soon after signing): the labelled facts,
@@ -117,7 +122,8 @@ ctx.on('page', async (page) => {
   await cdp.send('WebAuthn.enable');
   const {authenticatorId} = await cdp.send(
       'WebAuthn.addVirtualAuthenticator', {options: AUTHENTICATOR});
-  for (const credential of credentials) {
+  // Without the credential, the prompt fails like a cancelled one.
+  for (const credential of fail ? [] : credentials) {
     await cdp.send('WebAuthn.addCredential', {authenticatorId, credential});
   }
   try {
@@ -318,6 +324,16 @@ if (outsiderResult !== 'refused') {
   throw new Error(`another extension used the agent: ${outsiderResult}`);
 }
 console.log('another extension was refused');
+
+// Cancelling Chrome's prompt skips that key, without another click: ssh
+// tries the next one (touch-key is offered first).
+fs.writeFileSync(authKeys, lines['touch-key'] + '\n' + lines['pin-key'] + '\n');
+failNextPrompt = true;
+await login('SKIPPED');
+if (failNextPrompt) {
+  throw new Error('no touch window to cancel');
+}
+console.log('a cancelled prompt skipped to the next key');
 
 await ctx.close();
 console.log('PASS');
