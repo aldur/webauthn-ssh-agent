@@ -125,10 +125,9 @@ await sign.addInitScript(() => {
     ...enc(new Array(32).fill(0x2a)),
   ];
   globalThis.chrome = {storage: {local: {get: async () => ({})}},
-    runtime: {sendMessage: async (msg) =>
+    runtime: {connect: () => ({}), sendMessage: async (msg) =>
     msg.type === 'get-sign-request' ? {
-      key: {comment: 'yubikey-5c', credentialId: 'AA', verify: false,
-            kind: 'security-key', resident: false},
+      key: {comment: 'yubikey-5c', credentialId: 'AA', verify: false},
       data,
       caller: 'Secure Shell',
       decision: 'ask',
