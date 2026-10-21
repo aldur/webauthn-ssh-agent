@@ -3,8 +3,8 @@
 /**
  * @fileoverview Service worker: serves the SSH agent protocol to Secure Shell
  * (`--ssh-agent=<this extension's id>`) and opens a small window to have the
- * user touch their security key for each signature, since service workers
- * can't use WebAuthn.
+ * user confirm each signature with their security key or passkey, since
+ * service workers can't use WebAuthn.
  */
 
 import {handleRequest} from './agent.js';
@@ -30,6 +30,9 @@ const MAX_PENDING_PER_CONNECTION = 2;
 
 /** The message type Secure Shell's agent relay uses. */
 const AGENT_MESSAGE_TYPE = 'auth-agent@openssh.com';
+
+/** How long to wait for the details window to show the request. */
+const DETAILS_TIMEOUT_MS = 3000;
 
 /**
  * Signature requests waiting for the user, by random ID.
@@ -74,7 +77,7 @@ let openedManagePage = false;
  * @param {!Object} key The StoredKey to use.
  * @param {!Uint8Array} data The SSH data to sign.
  * @param {!Connection} connection Where the request came from.
- * @param {string} decision A policy Decision: ask, confirm or sign.
+ * @param {string} decision A policy Decision other than refuse.
  * @param {!Object} fields What to show the user (policy Fields).
  * @return {!Promise<!Uint8Array>} The SSH signature.
  */
@@ -144,10 +147,6 @@ chrome.windows.onRemoved.addListener((windowId) => {
   }
 });
 
-// Messages from our sign window.
-/** How long to wait for the details window to show the request. */
-const DETAILS_TIMEOUT_MS = 3000;
-
 /**
  * Open the details window, beside the touch window, wait until it shows the
  * request, and give the focus back to the touch window (WebAuthn needs it).
@@ -185,6 +184,7 @@ async function showDetails(request, bounds) {
   }
 }
 
+// Messages from our touch & details windows.
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id) {
     return;
@@ -197,11 +197,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse(null);
       return;
     }
-    const {comment, kind, resident} = request?.key ?? {};
     sendResponse(msg.type === 'get-request-details' && request ? {
       caller: request.caller,
       fields: request.fields,
-      key: {comment, kind, resident},
+      key: {comment: request.key.comment},
     } : null);
     return;
   }
@@ -335,7 +334,8 @@ function serve(port, caller, early) {
       }
       const response = await handleRequest(request, backend);
       try {
-        port.postMessage({type: AGENT_MESSAGE_TYPE, data: Array.from(response)});
+        port.postMessage(
+            {type: AGENT_MESSAGE_TYPE, data: Array.from(response)});
       } catch (e) {
         // The client went away.
       }

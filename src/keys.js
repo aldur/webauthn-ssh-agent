@@ -72,10 +72,11 @@ const VERIFIED_PREFIX = 'verified:';
 const USER_HANDLE_RANDOM_BYTES = 16;
 const USER_HANDLE_MAX_BYTES = 64;
 const USER_HANDLE_FLAG_VERIFY = 0x01;
-const USER_HANDLE_NAME_BYTES = USER_HANDLE_MAX_BYTES - USER_HANDLE_RANDOM_BYTES -
-    1;
+const USER_HANDLE_NAME_BYTES =
+    USER_HANDLE_MAX_BYTES - USER_HANDLE_RANDOM_BYTES - 1;
 
-/** authenticatorData flags. */
+// authenticatorData flags.
+/** User verified (a PIN or biometric). */
 const FLAG_UV = 0x04;
 /** Backup eligible: the credential can be synced. */
 const FLAG_BE = 0x08;
@@ -88,6 +89,9 @@ const FLAG_ED = 0x80;
 /** CTAP credProtect: never used without user verification. */
 const CRED_PROTECT_UV_REQUIRED = 3;
 
+/** How authenticators are reached (e.g. "usb", "hybrid"), & how many kept. */
+const TRANSPORT_PATTERN = /^[a-z-]{1,32}$/;
+const MAX_TRANSPORTS = 8;
 
 /**
  * What to create the key on.  It only steers the browser's dialog: what
@@ -184,17 +188,36 @@ export async function findApplication(rpIdHash, candidates) {
 }
 
 /**
+ * @return {!Array<string>} This extension's possible RP IDs (its origin or
+ *     hostname, depending on the browser): its keys are bound to one.
+ */
+function ownApplications() {
+  return [globalThis.location.origin, globalThis.location.hostname];
+}
+
+/**
  * @param {!Uint8Array} authData authenticatorData from the authenticator.
  * @return {!Promise<string>} The application (RP ID) hashed into authData.
  */
 async function applicationFromAuthData(authData) {
-  const {origin, hostname} = globalThis.location;
   const application =
-      await findApplication(authData.subarray(0, 32), [origin, hostname]);
+      await findApplication(authData.subarray(0, 32), ownApplications());
   if (application === null) {
-    throw new Error(`unable to determine the RP ID used for ${origin}`);
+    throw new Error('unable to determine the RP ID used for ' +
+                    globalThis.location.origin);
   }
   return application;
+}
+
+/**
+ * @param {!Uint8Array} authData
+ * @return {{backupEligible: boolean, backedUp: boolean}} Its BE & BS flags.
+ */
+function backupFlags(authData) {
+  return {
+    backupEligible: !!(authData[32] & FLAG_BE),
+    backedUp: !!(authData[32] & FLAG_BS),
+  };
 }
 
 /**
@@ -264,26 +287,28 @@ export function validateKey(raw, applications) {
   }
   const base64url = (v, max) => typeof v === 'string' && v.length > 0 &&
       v.length <= max && /^[A-Za-z0-9_-]+$/.test(v);
+  // Optional fields: unset, or one of these values / passing this test.
+  const oneOf = (v, values) => v === undefined || values.includes(v);
+  const valid = (v, test) => v === undefined || test(v);
+  const flag = (v) => oneOf(v, [true, false]);
   if (!base64url(raw.credentialId, 1366) || !base64url(raw.publicKey, 88) ||
-      !applications.includes(raw.application) || typeof raw.comment !== 'string' ||
-      !Number.isFinite(raw.created) || typeof raw.resident !== 'boolean' ||
-      typeof raw.verify !== 'boolean' ||
+      !applications.includes(raw.application) ||
+      typeof raw.comment !== 'string' || !Number.isFinite(raw.created) ||
+      typeof raw.resident !== 'boolean' || typeof raw.verify !== 'boolean' ||
       // (Older versions stored a guessed kind: accepted, & dropped.)
-      ![undefined, ...Object.values(Kind)].includes(raw.kind) ||
-      ![undefined, true, false].includes(raw.verifyEnforcedByKey) ||
-      ![undefined, ...Object.values(Confirmation)].includes(raw.confirmation) ||
-      ![undefined, ...Object.values(Kind)].includes(raw.requested) ||
-      ![undefined, true, false].includes(raw.imported) ||
-      !(raw.order === undefined ||
-        Number.isSafeInteger(raw.order) && raw.order >= 0) ||
-      ![undefined, ...Object.values(Attachment)].includes(raw.attachment) ||
-      !(raw.transports === undefined ||
-        Array.isArray(raw.transports) && raw.transports.length <= 8 &&
-        raw.transports.every((t) => /^[a-z-]{1,32}$/.test(t))) ||
-      !(raw.aaguid === undefined || typeof raw.aaguid === 'string' &&
-        /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(raw.aaguid)) ||
-      ![undefined, true, false].includes(raw.backupEligible) ||
-      ![undefined, true, false].includes(raw.backedUp)) {
+      !oneOf(raw.kind, Object.values(Kind)) ||
+      !flag(raw.verifyEnforcedByKey) ||
+      !oneOf(raw.confirmation, Object.values(Confirmation)) ||
+      !oneOf(raw.requested, Object.values(Kind)) ||
+      !flag(raw.imported) ||
+      !valid(raw.order, (v) => Number.isSafeInteger(v) && v >= 0) ||
+      !oneOf(raw.attachment, Object.values(Attachment)) ||
+      !valid(raw.transports, (v) => Array.isArray(v) &&
+          v.length <= MAX_TRANSPORTS &&
+          v.every((t) => TRANSPORT_PATTERN.test(t))) ||
+      !valid(raw.aaguid, (v) => typeof v === 'string' &&
+          /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(v)) ||
+      !flag(raw.backupEligible) || !flag(raw.backedUp)) {
     return null;
   }
   let point;
@@ -337,8 +362,7 @@ export function isMismatched(key) {
 async function updateReported(key, {authenticatorData, attachment}) {
   const changes = {
     attachment: knownAttachment(attachment) ?? key.attachment,
-    backupEligible: !!(authenticatorData[32] & FLAG_BE),
-    backedUp: !!(authenticatorData[32] & FLAG_BS),
+    ...backupFlags(authenticatorData),
   };
   if (Object.entries(changes).some(([name, value]) => key[name] !== value)) {
     await updateKey(key, changes);
@@ -355,8 +379,7 @@ async function updateReported(key, {authenticatorData, attachment}) {
  */
 async function updateKey(key, changes) {
   const name = STORAGE_PREFIX + key.credentialId;
-  const {origin, hostname} = globalThis.location;
-  const applications = [origin, hostname];
+  const applications = ownApplications();
   const stored = validateKey(
       (await chrome.storage.sync.get(name))[name], applications);
   const updated = stored && validateKey({...stored, ...changes}, applications);
@@ -384,8 +407,7 @@ export async function renameKey(key, comment) {
  *     (see StoredKey).
  */
 export async function loadKeys() {
-  const {origin, hostname} = globalThis.location;
-  const applications = [origin, hostname];
+  const applications = ownApplications();
   const items = await chrome.storage.sync.get(null);
   const raws = Object.entries(items)
       .filter(([name]) => name.startsWith(STORAGE_PREFIX))
@@ -605,8 +627,7 @@ export async function createKey(
     throw new Error('the authenticator did not verify the user');
   }
 
-  // Record where the key really is, not what we asked for.
-  const backupEligible = !!(authData[32] & FLAG_BE);
+  // Record what the authenticator reported, not what we asked for.
   const extensionResults = credential.getClientExtensionResults?.() ?? {};
   const rk = extensionResults.credProps?.rk;
 
@@ -620,7 +641,7 @@ export async function createKey(
     created: Date.now(),
     attachment: knownAttachment(credential.authenticatorAttachment),
     transports: (response.getTransports?.() ?? [])
-        .filter((t) => /^[a-z-]{1,32}$/.test(t)).slice(0, 8),
+        .filter((t) => TRANSPORT_PATTERN.test(t)).slice(0, MAX_TRANSPORTS),
     aaguid: aaguidOf(authData),
     // Passkey providers always make discoverable credentials.
     resident: rk ?? (resident || passkey),
@@ -631,8 +652,7 @@ export async function createKey(
         verify && authDataExtensions(authData).get('credProtect') ===
             CRED_PROTECT_UV_REQUIRED,
     requested: kind,
-    backupEligible,
-    backedUp: !!(authData[32] & FLAG_BS),
+    ...backupFlags(authData),
   };
   if (!await keep(key)) {
     throw Object.assign(new Error('not kept'), {key});
@@ -680,6 +700,28 @@ async function getAssertion(challenge, credentialId, userVerification) {
 }
 
 /**
+ * @param {{authenticatorData: !Uint8Array, clientDataJSON: !Uint8Array}}
+ *     assertion
+ * @return {!Promise<!Uint8Array>} What the authenticator signed.
+ */
+async function signedData({authenticatorData, clientDataJSON}) {
+  return concat(authenticatorData, await sha256(clientDataJSON));
+}
+
+/**
+ * @param {{authenticatorData: !Uint8Array}} assertion
+ * @param {!StoredKey} key
+ * @return {!Promise<void>} Rejects unless the assertion is for the key's
+ *     application (RP ID).
+ */
+async function checkApplication({authenticatorData}, key) {
+  if (!equalBytes(authenticatorData.subarray(0, 32),
+                  await sha256(key.application))) {
+    throw new Error('the signature is for another site');
+  }
+}
+
+/**
  * Sign SSH data with a key.
  *
  * The SSH data is the WebAuthn challenge; the browser base64url encodes it
@@ -692,10 +734,7 @@ async function getAssertion(challenge, credentialId, userVerification) {
 export async function sign(key, data) {
   const assertion = await getAssertion(
       data, key.credentialId, key.verify ? 'required' : 'discouraged');
-  if (!equalBytes(assertion.authenticatorData.subarray(0, 32),
-                  await sha256(key.application))) {
-    throw new Error('RP ID hash mismatch');
-  }
+  await checkApplication(assertion, key);
   await updateReported(key, assertion).catch(
       (e) => console.warn('could not update what the authenticator reported:',
                           e));
@@ -722,11 +761,9 @@ export async function importKey(onSecondTouch = () => {}) {
   const assert = async (credentialId) => {
     const assertion = await getAssertion(
         crypto.getRandomValues(new Uint8Array(32)), credentialId, 'preferred');
-    const signedData = concat(
-        assertion.authenticatorData, await sha256(assertion.clientDataJSON));
     return {
       ...assertion,
-      signedData,
+      signedData: await signedData(assertion),
       rs: decodeDerEcdsaSignature(assertion.signature),
     };
   };
@@ -755,7 +792,6 @@ export async function importKey(onSecondTouch = () => {}) {
     throw new Error('unable to recover the public key');
   }
 
-  const backupEligible = !!(first.authenticatorData[32] & FLAG_BE);
   const userHandle = first.userHandle ?? new Uint8Array(0);
   const flags = userHandle[USER_HANDLE_RANDOM_BYTES] ?? 0;
   const comment = cleanName(new TextDecoder().decode(
@@ -774,8 +810,7 @@ export async function importKey(onSecondTouch = () => {}) {
     // We can't tell after the fact; assume only servers enforce it.
     verifyEnforcedByKey: false,
     imported: true,
-    backupEligible,
-    backedUp: !!(first.authenticatorData[32] & FLAG_BS),
+    ...backupFlags(first.authenticatorData),
   };
   await addKey(key);
   return key;
@@ -793,15 +828,11 @@ export async function verifyKey(key) {
   const assertion = await getAssertion(
       crypto.getRandomValues(new Uint8Array(32)), key.credentialId,
       key.verify ? 'required' : 'discouraged');
-  if (!equalBytes(assertion.authenticatorData.subarray(0, 32),
-                  await sha256(key.application))) {
-    throw new Error('the key belongs to another site');
-  }
-  const signedData = concat(
-      assertion.authenticatorData, await sha256(assertion.clientDataJSON));
-  if (!await verifySignature(fromBase64Url(key.publicKey), signedData,
+  await checkApplication(assertion, key);
+  if (!await verifySignature(fromBase64Url(key.publicKey),
+                             await signedData(assertion),
                              decodeDerEcdsaSignature(assertion.signature))) {
-    throw new Error('the stored public key does not match the security key');
+    throw new Error('the stored public key does not match the authenticator');
   }
   await recordVerified(key);
   await updateReported(key, assertion);

@@ -10,7 +10,7 @@ import {
   setKeyConfirmation, verifyKey,
 } from './keys.js';
 import {AAGUID_NAMES} from './aaguids.js';
-import {loadSettings, saveSetting} from './settings.js';
+import {Confirmation, loadSettings, saveSetting} from './settings.js';
 import {fingerprint} from './ssh.js';
 
 const $ = (id) => document.getElementById(id);
@@ -18,10 +18,65 @@ const $ = (id) => document.getElementById(id);
 /** How long a status message stays up, unless something is in progress. */
 const STATUS_MS = 10 * 1000;
 
+/** The confirmation levels: name, & what it does. */
+const LEVELS = {
+  [Confirmation.REVIEW]: ['Review', 'shows the request & waits for Continue'],
+  [Confirmation.SHOW]:
+      ['Show', 'opens the prompt right away, showing the request beside it'],
+  [Confirmation.SILENT]: ['Silent', 'only opens the prompt'],
+};
+
+/**
+ * The key list's columns: heading, & what it means (shown on hover).
+ */
+const COLUMNS = [
+  ['', ''],  // Drag handle.
+  ['Name', 'Keys are offered to servers in this order: drag ⋮⋮ (or ' +
+           'Alt+↑/↓ on it) to change it.'],
+  ['Attachment', 'authenticatorAttachment, as last reported.\n' +
+                 'Platform: built into the computer (OS or browser).\n' +
+                 'Cross-platform: roaming, e.g. a security key (USB, NFC, ' +
+                 'Bluetooth) or a phone (hybrid).'],
+  ['AAGUID', 'The authenticator\'s model ID, as reported when the key was ' +
+             'created.\n' +
+             '✓ Reported: hover for the model, from a community list.\n' +
+             'Blank: not reported (browsers often send all zeros), or the ' +
+             'key is older than this column.'],
+  ['Verified', 'Whether this computer checked the public key with the ' +
+               'authenticator.  Synced keys need this once per computer: ' +
+               'whoever controls your Google account could swap the public ' +
+               'key.  It covers the public key & UV; the other columns are ' +
+               'as synced.'],
+  ['Discoverable', 'A discoverable credential (resident key) is stored on ' +
+                   'the authenticator, so it can be imported on another ' +
+                   'computer.'],
+  ['Backup', 'The authenticator\'s backup flags, as last reported.\n' +
+             '✓ Backed up (BS): multi-device, synced.\n' +
+             '○ Backup eligible (BE): multi-device, not synced yet.\n' +
+             'Single-device: not backup eligible, so bound to the ' +
+             'authenticator: only it can use the private key.'],
+  ['UV', 'Require a PIN or fingerprint: user verification (UV) on every ' +
+         'login, not just user presence (a touch).\n' +
+         'Green: the authenticator enforces it (credProtect).\n' +
+         'Grey: only servers do (verify-required).'],
+  ['Confirmation', 'How much to show before direct logins to a verified ' +
+                   'server.'],
+  ['', ''],
+];
+
+/** For what the authenticator hasn't reported yet (older keys). */
+const UNKNOWN = 'Not known yet: updated the next time the key is used';
+
+/** Clears the status message. */
 let statusTimer;
 
 /** A key to highlight briefly when the list shows it, as it's new. */
 let highlight = null;
+
+/** The keys' IDs, in the list's order. */
+let order = [];
+/** A key whose drag handle to focus once the list redraws. */
+let focusAfterLoad = null;
 
 /**
  * @param {string} message
@@ -35,13 +90,85 @@ function setStatus(message, inProgress = false) {
   }
 }
 
-/** The confirmation levels: name, & what it does. */
-const LEVELS = {
-  review: ['Review', 'shows the request & waits for Continue'],
-  show: ['Show', 'opens the prompt right away, showing the request beside ' +
-                 'it'],
-  silent: ['Silent', 'only opens the prompt'],
-};
+/**
+ * @param {string} tag
+ * @param {string=} className
+ * @param {string=} text
+ * @param {string=} tip Shown on hover or click.
+ * @return {!Element}
+ */
+function element(tag, className = '', text = '', tip = '') {
+  const e = document.createElement(tag);
+  e.className = className;
+  e.textContent = text;
+  if (tip) {
+    e.dataset.tip = tip;
+    if (tag === 'button') {
+      e.setAttribute('aria-label', tip);  // For icon buttons.
+    }
+  }
+  return e;
+}
+
+/**
+ * A cell with a mark (or none), explained on hover.
+ *
+ * @param {string} mark E.g. ✓, ○ or ?, or '' for none.
+ * @param {string} style yes, weak (grey), or wrong (red).
+ * @param {string} tip What it means.
+ * @return {!Element}
+ */
+function markCell(mark, style, tip) {
+  const td = element('td', 'mark', '', tip);
+  if (mark) {
+    td.append(element('span', style, mark));
+  }
+  return td;
+}
+
+/**
+ * Tooltips: the browser's own only show after a delay, and never on click
+ * or tap, so show data-tip right away instead.
+ */
+const tooltip = element('div', 'tip');
+tooltip.setAttribute('role', 'tooltip');
+tooltip.hidden = true;
+document.body.append(tooltip);
+
+/** @param {?Element} target With data-tip, or null to hide the tooltip. */
+function showTip(target) {
+  if (!target?.dataset.tip) {
+    tooltip.hidden = true;
+    return;
+  }
+  tooltip.textContent = target.dataset.tip;
+  tooltip.hidden = false;
+  const box = target.getBoundingClientRect();
+  tooltip.style.left = `${Math.max(8, Math.min(
+      box.left, innerWidth - tooltip.offsetWidth - 8))}px`;
+  tooltip.style.top = `${box.bottom + tooltip.offsetHeight + 4 < innerHeight ?
+      box.bottom + 4 : box.top - tooltip.offsetHeight - 4}px`;
+}
+for (const type of ['mouseover', 'click', 'focusin']) {
+  document.addEventListener(
+      type, (e) => showTip(e.target.closest?.('[data-tip]') ?? null));
+}
+document.documentElement.addEventListener('mouseleave', () => showTip(null));
+addEventListener('scroll', () => showTip(null), true);
+addEventListener('keydown', (e) => e.key === 'Escape' && showTip(null));
+
+/** @return {!Element} The key list's header: each column explains itself. */
+function renderHead() {
+  const tr = element('tr');
+  for (const [name, meaning] of COLUMNS) {
+    const th = element('th', '', '', meaning);
+    th.append(meaning ? element('abbr', '', name) : name);
+    tr.append(th);
+  }
+  const head = element('thead');
+  head.append(tr);
+  return head;
+}
 
 /**
  * @param {!Object} key A StoredKey.
@@ -82,80 +209,6 @@ function renderLevel(key, verified) {
     setKeyConfirmation(key, select.value || null);
   };
   return select;
-}
-
-/**
- * The key list's columns: heading, & what it means (shown on hover).
- */
-const COLUMNS = [
-  ['', ''],  // Drag handle.
-  ['Name', 'Keys are offered to servers in this order: drag ⋮⋮ (or ' +
-           'Alt+↑/↓ on it) to change it.'],
-  ['Attachment', 'authenticatorAttachment, as last reported.\n' +
-                 'Platform: built into the computer (OS or browser).\n' +
-                 'Cross-platform: roaming, e.g. a security key (USB, NFC, ' +
-                 'Bluetooth) or a phone (hybrid).'],
-  ['AAGUID', 'The authenticator\'s model ID, as reported when the key was ' +
-             'created.\n' +
-             '✓ Reported: hover for the model, from a community list.\n' +
-             'Blank: not reported (browsers often send all zeros), or the ' +
-             'key is older than this column.'],
-  ['Verified', 'Whether this computer checked the public key with the ' +
-               'authenticator.  Synced keys need this once per computer: ' +
-               'whoever controls your Google account could swap the public ' +
-               'key.  It covers the public key & UV; the other columns are ' +
-               'as synced.'],
-  ['Discoverable', 'A discoverable credential (resident key) is stored on ' +
-                   'the authenticator, so it can be imported on another ' +
-                   'computer.'],
-  ['Backup', 'The authenticator\'s backup flags, as last reported.\n' +
-             '✓ Backed up (BS): multi-device, synced.\n' +
-             '○ Backup eligible (BE): multi-device, not synced yet.\n' +
-             'Single-device: not backup eligible, so bound to the ' +
-             'authenticator: only it can use the private key.'],
-  ['UV', 'Require a PIN or fingerprint: user verification (UV) on every ' +
-         'login, not just user presence (a touch).\n' +
-         'Green: the authenticator enforces it (credProtect).\n' +
-         'Grey: only servers do (verify-required).'],
-  ['Confirmation', 'How much to show before direct logins to a verified ' +
-                   'server.'],
-  ['', ''],
-];
-
-/**
- * @param {string} tag
- * @param {string=} className
- * @param {string=} text
- * @param {string=} tip Shown on hover or click.
- * @return {!Element}
- */
-function element(tag, className = '', text = '', tip = '') {
-  const e = document.createElement(tag);
-  e.className = className;
-  e.textContent = text;
-  if (tip) {
-    e.dataset.tip = tip;
-    if (tag === 'button') {
-      e.setAttribute('aria-label', tip);  // For icon buttons.
-    }
-  }
-  return e;
-}
-
-/**
- * A cell with a mark (or none), explained on hover.
- *
- * @param {string} mark E.g. ✓, ○ or ?, or '' for none.
- * @param {string} style yes, weak (grey), or wrong (red).
- * @param {string} tip What it means.
- * @return {!Element}
- */
-function markCell(mark, style, tip) {
-  const td = element('td', 'mark', '', tip);
-  if (mark) {
-    td.append(element('span', style, mark));
-  }
-  return td;
 }
 
 /**
@@ -211,11 +264,6 @@ function renderName(key, keyFingerprint) {
   td.append(name);
   return td;
 }
-
-/** The keys' IDs, in the list's order. */
-let order = [];
-/** A key whose drag handle to focus once the list redraws. */
-let focusAfterLoad = null;
 
 /**
  * Move a key in the list.
@@ -292,9 +340,6 @@ function acceptDrops(tr, id) {
     moveKey(dragged, before(e) ? at : at + 1);
   };
 }
-
-/** For what the authenticator hasn't reported yet (older keys). */
-const UNKNOWN = 'Not known yet: updated the next time the key is used';
 
 /**
  * @param {!Object} key A StoredKey.
@@ -469,50 +514,6 @@ function renderKey(key, verified, keyFingerprint) {
       level,
       renderActions(key, verified));
   return tr;
-}
-
-/**
- * Tooltips: the browser's own only show after a delay, and never on click
- * or tap, so show data-tip right away instead.
- */
-const tooltip = element('div', 'tip');
-tooltip.setAttribute('role', 'tooltip');
-tooltip.hidden = true;
-document.body.append(tooltip);
-
-/** @param {?Element} target With data-tip, or null to hide the tooltip. */
-function showTip(target) {
-  if (!target?.dataset.tip) {
-    tooltip.hidden = true;
-    return;
-  }
-  tooltip.textContent = target.dataset.tip;
-  tooltip.hidden = false;
-  const box = target.getBoundingClientRect();
-  tooltip.style.left = `${Math.max(8, Math.min(
-      box.left, innerWidth - tooltip.offsetWidth - 8))}px`;
-  tooltip.style.top = `${box.bottom + tooltip.offsetHeight + 4 < innerHeight ?
-      box.bottom + 4 : box.top - tooltip.offsetHeight - 4}px`;
-}
-for (const type of ['mouseover', 'click', 'focusin']) {
-  document.addEventListener(
-      type, (e) => showTip(e.target.closest?.('[data-tip]') ?? null));
-}
-document.documentElement.addEventListener('mouseleave', () => showTip(null));
-addEventListener('scroll', () => showTip(null), true);
-addEventListener('keydown', (e) => e.key === 'Escape' && showTip(null));
-
-/** @return {!Element} The key list's header: each column explains itself. */
-function renderHead() {
-  const tr = element('tr');
-  for (const [name, meaning] of COLUMNS) {
-    const th = element('th', '', '', meaning);
-    th.append(meaning ? element('abbr', '', name) : name);
-    tr.append(th);
-  }
-  const head = element('thead');
-  head.append(tr);
-  return head;
 }
 
 /** Refresh the list of keys. */

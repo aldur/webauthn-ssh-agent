@@ -13,6 +13,7 @@
 import {
   confirmationFor, isVerified, setKeyConfirmation, sign,
 } from './keys.js';
+import {Decision} from './policy.js';
 import {showRequest} from './request-view.js';
 import {loadSettings} from './settings.js';
 
@@ -56,11 +57,12 @@ function detailsBounds() {
  */
 async function trySign(request) {
   $('continue').classList.add('hidden');
-  if (request.decision === 'show' || request.decision === 'silent') {
+  if (request.decision === Decision.SHOW ||
+      request.decision === Decision.SILENT) {
     // The prompt is about to cover this window, unread: show nothing here
     // (and with Show, the request beside it instead).
     document.body.classList.add('prompting');
-    if (request.decision === 'show') {
+    if (request.decision === Decision.SHOW) {
       await chrome.runtime.sendMessage(
           {type: 'show-details', id, bounds: detailsBounds()});
     }
@@ -71,8 +73,7 @@ async function trySign(request) {
         (request.key.verify ? ', and your PIN or fingerprint…' : '…');
   }
   try {
-    const signature =
-        await sign(request.key, Uint8Array.from(request.data));
+    const signature = await sign(request.key, Uint8Array.from(request.data));
     document.body.classList.remove('prompting');
     $('status').textContent = 'Done.';
     finish({signature: Array.from(signature)});
@@ -83,10 +84,10 @@ async function trySign(request) {
       finish({error: 'cancelled in Chrome\'s prompt'});
       return;
     }
-    if (request.decision === 'silent') {
-      // Say what failed.
+    if (request.decision === Decision.SILENT) {
+      // Say what failed, & ask before trying again.
       showRequest(request);
-      request.decision = 'shown';
+      request.decision = Decision.ASK;
     }
     document.body.classList.remove('prompting');
     $('status').textContent = `Not signed: ${e.message}`;
@@ -112,17 +113,17 @@ $('deny').onclick = () =>
 const request =
     await chrome.runtime.sendMessage({type: 'get-sign-request', id});
 // Blank until we know there's something to show.
-if (request?.decision !== 'silent') {
+if (request?.decision !== Decision.SILENT) {
   document.body.classList.remove('prompting');
 }
 if (!request) {
   $('status').textContent = 'This request is no longer pending.';
 } else {
   $('continue').onclick = () => trySign(request);
-  if (request.decision === 'silent') {
+  if (request.decision === Decision.SILENT) {
     // The user chose to see only the security key or passkey prompt.
     trySign(request);
-  } else if (request.decision === 'show') {
+  } else if (request.decision === Decision.SHOW) {
     showRequest(request);
     trySign(request);
   } else {
@@ -130,7 +131,7 @@ if (!request) {
     showContinue();
     // The kind of request the confirmation level applies to: offer to set
     // this key's (only used once the key is verified on this computer).
-    if (request.decision === 'ask' && await isVerified(request.key)) {
+    if (request.decision === Decision.ASK && await isVerified(request.key)) {
       $('level').value =
           await confirmationFor(request.key, await loadSettings());
       $('level').onchange =

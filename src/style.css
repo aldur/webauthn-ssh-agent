@@ -27,8 +27,7 @@ h2 {
   margin-top: 2em;
 }
 
-code,
-.key-line {
+code {
   font-family: ui-monospace, monospace;
   /* Not the browsers' smaller default for monospace. */
   font-size: 0.85rem;
