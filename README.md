@@ -1,6 +1,6 @@
 # WebAuthn SSH Agent
 
-An SSH agent for Chrome's [Secure Shell] that keeps your SSH keys on a
+An SSH agent for Chrome's [Secure Shell], with SSH keys bound to a
 **security key** (YubiKey, Titan, …) or a **passkey**, via WebAuthn.  The
 extension never has access to a private key, and every login needs your
 security key or passkey.
