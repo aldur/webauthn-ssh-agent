@@ -111,6 +111,23 @@ function element(tag, className = '', text = '', tip = '') {
 }
 
 /**
+ * Copy text, & show it worked on the (⧉) button for a moment.
+ *
+ * @param {!Element} button
+ * @param {string} text
+ * @return {!Promise<void>}
+ */
+async function copyText(button, text) {
+  await navigator.clipboard.writeText(text);
+  button.textContent = '✓';
+  button.classList.add('yes');
+  setTimeout(() => {
+    button.textContent = '⧉';
+    button.classList.remove('yes');
+  }, 1500);
+}
+
+/**
  * A cell with a mark (or none), explained on hover.
  *
  * @param {string} mark E.g. ✓, ○ or ?, or '' for none.
@@ -448,13 +465,7 @@ function renderActions(key, verified) {
       'Copy this key\'s authorized_keys line' +
       (verified ? '' : ' (not verified)'));
   copy.onclick = async () => {
-    await navigator.clipboard.writeText(keyAuthorizedKeysLine(key));
-    copy.textContent = '✓';
-    copy.classList.add('yes');
-    setTimeout(() => {
-      copy.textContent = '⧉';
-      copy.classList.remove('yes');
-    }, 1500);
+    await copyText(copy, keyAuthorizedKeysLine(key));
     setStatus(verified ?
         `Copied "${key.comment}".  Add it to ~/.ssh/authorized_keys on ` +
             'your servers.' :
@@ -615,8 +626,9 @@ $('import').onclick = () => run(
 const option = `--ssh-agent=${chrome.runtime.id}`;
 $('agent-option').textContent = option;
 $('copy-option').onclick = async () => {
-  await navigator.clipboard.writeText(option);
-  setStatus('Copied.');
+  await copyText($('copy-option'), option);
+  setStatus('Copied.  Paste it into the connection\'s SSH relay server ' +
+            'options.');
 };
 
 if (!globalThis.PublicKeyCredential) {

@@ -113,19 +113,22 @@ body.manage .scroll {
   overflow-x: auto;
 }
 
-.keys {
+body.manage {
   --yes: #188038;
   --wrong: #d93025;
-  border-collapse: collapse;
-  margin: 0.6em 0;
-  width: 100%;
 }
 
 @media (prefers-color-scheme: dark) {
-  .keys {
+  body.manage {
     --yes: #81c995;
     --wrong: #f28b82;
   }
+}
+
+.keys {
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  width: 100%;
 }
 
 .keys th {
@@ -268,7 +271,8 @@ body.manage .scroll {
   text-align: right;
 }
 
-.keys button.icon {
+/* Small buttons that are just an icon, e.g. copy (⧉). */
+body.manage button.icon {
   background: none;
   border: 1px solid transparent;
   border-radius: 4px;
@@ -278,11 +282,11 @@ body.manage .scroll {
   padding: 0.05em 0.4em;
 }
 
-.keys button.icon.yes {
+body.manage button.icon.yes {
   color: var(--yes);
 }
 
-.keys button.icon:hover {
+body.manage button.icon:hover {
   border-color: var(--line);
 }
 
