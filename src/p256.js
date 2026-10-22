@@ -9,7 +9,7 @@
  * up to two candidate keys; verifying a second signature picks the right one.
  */
 
-import {concat} from './ssh.js';
+import {concat} from './bytes.js';
 
 /**
  * @see https://www.secg.org/sec2-v2.pdf (secp256r1)

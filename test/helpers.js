@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 /**
- * @fileoverview SSH host keys made with WebCrypto, for tests.
+ * @fileoverview Test data: SSH host keys made with WebCrypto, & WebAuthn
+ * authenticator data.
  */
 
-import {
-  concat, encodeMpint, encodeString, fromBase64Url,
-} from '../src/ssh.js';
+import {concat, fromBase64Url} from '../src/bytes.js';
+import {encodeMpint, encodeString} from '../src/ssh.js';
 
 /**
  * @param {string} type 'ed25519', 'nistp256' or 'rsa'.
@@ -58,3 +58,17 @@ export async function makeHostKey(type) {
             {name: 'RSASSA-PKCS1-v1_5'}, privateKey, data)))),
   };
 }
+
+// WebAuthn authenticator data, as authenticators make it: the RP ID hash,
+// flags & counter, ...
+export const authDataHeader = (flags, rpIdHash = new Uint8Array(32)) =>
+  [...rpIdHash, flags, 0, 0, 0, 1];
+// A COSE P-256 key: {1: 2, 3: -7, -1: 1, -2: x, -3: y}.
+const coseKey = [0xa5, 0x01, 0x02, 0x03, 0x26, 0x20, 0x01,
+                 0x21, 0x58, 32, ...new Uint8Array(32).fill(1),
+                 0x22, 0x58, 32, ...new Uint8Array(32).fill(2)];
+// AAGUID, credential ID 09090909, public key.
+export const attested = [...new Uint8Array(16), 0, 4, 9, 9, 9, 9, ...coseKey];
+// {"credProtect": 3}
+export const credProtect =
+    [0xa1, 0x6b, ...new TextEncoder().encode('credProtect'), 0x03];

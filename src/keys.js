@@ -31,15 +31,20 @@
  * SHA256(application) matches the rpIdHash the authenticator signed.
  */
 
-import {decodeCbor} from './cbor.js';
+import {
+  CRED_PROTECT_UV_REQUIRED, aaguidOf, authDataExtensions, backupFlags,
+  isUserVerified, rpIdHash,
+} from './authdata.js';
+import {
+  concat, equalBytes, fromBase64Url, sha256, toBase64Url,
+} from './bytes.js';
 import {recoverPublicKeys, verifySignature} from './p256.js';
 import {Confirmation, loadSettings} from './settings.js';
-import {cleanName, utf8Prefix} from './text.js';
 import {
-  authorizedKeysLine, concat, decodeDerEcdsaSignature, equalBytes,
-  fromBase64Url, p256PointFromSpki, skEcdsaKeyBlob, toBase64Url,
-  webauthnAssertionToSshSignature,
+  authorizedKeysLine, decodeDerEcdsaSignature, p256PointFromSpki,
+  skEcdsaKeyBlob, webauthnAssertionToSshSignature,
 } from './ssh.js';
+import {cleanName, utf8Prefix} from './text.js';
 
 /** COSE algorithm identifier for ECDSA w/SHA-256 on P-256. */
 const COSE_ALG_ES256 = -7;
@@ -74,20 +79,6 @@ const USER_HANDLE_MAX_BYTES = 64;
 const USER_HANDLE_FLAG_VERIFY = 0x01;
 const USER_HANDLE_NAME_BYTES =
     USER_HANDLE_MAX_BYTES - USER_HANDLE_RANDOM_BYTES - 1;
-
-// authenticatorData flags.
-/** User verified (a PIN or biometric). */
-const FLAG_UV = 0x04;
-/** Backup eligible: the credential can be synced. */
-const FLAG_BE = 0x08;
-/** Backed up: the credential is synced. */
-const FLAG_BS = 0x10;
-/** Attested credential data follows the fixed fields. */
-const FLAG_AT = 0x40;
-/** Extension outputs follow (after any attested credential data). */
-const FLAG_ED = 0x80;
-/** CTAP credProtect: never used without user verification. */
-const CRED_PROTECT_UV_REQUIRED = 3;
 
 /** How authenticators are reached (e.g. "usb", "hybrid"), & how many kept. */
 const TRANSPORT_PATTERN = /^[a-z-]{1,32}$/;
@@ -158,17 +149,6 @@ export const Attachment = {
 export let StoredKey;
 
 /**
- * @param {!Uint8Array|string} data Strings are UTF-8 encoded.
- * @return {!Promise<!Uint8Array>}
- */
-export async function sha256(data) {
-  if (typeof data === 'string') {
-    data = new TextEncoder().encode(data);
-  }
-  return new Uint8Array(await crypto.subtle.digest('SHA-256', data));
-}
-
-/**
  * Figure out which string the authenticator hashed as the RP ID.
  *
  * For extensions Chrome hashes the full chrome-extension:// origin, but check
@@ -201,67 +181,12 @@ function ownApplications() {
  */
 async function applicationFromAuthData(authData) {
   const application =
-      await findApplication(authData.subarray(0, 32), ownApplications());
+      await findApplication(rpIdHash(authData), ownApplications());
   if (application === null) {
     throw new Error('unable to determine the RP ID used for ' +
                     globalThis.location.origin);
   }
   return application;
-}
-
-/**
- * @param {!Uint8Array} authData
- * @return {{backupEligible: boolean, backedUp: boolean}} Its BE & BS flags.
- */
-function backupFlags(authData) {
-  return {
-    backupEligible: !!(authData[32] & FLAG_BE),
-    backedUp: !!(authData[32] & FLAG_BS),
-  };
-}
-
-/**
- * The authenticator's extension outputs, from its authenticator data:
- * browsers don't pass some on (e.g. credProtect).
- *
- * @param {!Uint8Array} authData
- * @return {!Map} Empty if there are none, or they can't be read.
- */
-export function authDataExtensions(authData) {
-  if (authData.length < 37 || !(authData[32] & FLAG_ED)) {
-    return new Map();
-  }
-  try {
-    let offset = 37;  // RP ID hash, flags, signature counter.
-    if (authData[32] & FLAG_AT) {
-      // AAGUID, credential ID length & ID, then the COSE public key.
-      const idLength = (authData[offset + 16] << 8) | authData[offset + 17];
-      offset = decodeCbor(authData, offset + 18 + idLength).end;
-    }
-    const {value} = decodeCbor(authData, offset);
-    return value instanceof Map ? value : new Map();
-  } catch (e) {
-    return new Map();
-  }
-}
-
-/**
- * @param {!Uint8Array} authData From creating a credential.
- * @return {(string|undefined)} The authenticator's AAGUID, as a lowercase
- *     UUID, unless it's all zeros (or missing).
- */
-export function aaguidOf(authData) {
-  if (authData.length < 53 || !(authData[32] & FLAG_AT)) {
-    return undefined;
-  }
-  const bytes = authData.subarray(37, 53);
-  if (bytes.every((b) => b === 0)) {
-    return undefined;
-  }
-  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0'))
-      .join('');
-  return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16),
-          hex.slice(16, 20), hex.slice(20)].join('-');
 }
 
 /**
@@ -623,7 +548,7 @@ export async function createKey(
     throw new Error('the authenticator did not create a P-256 key');
   }
   const authData = new Uint8Array(response.getAuthenticatorData());
-  if (verify && !(authData[32] & FLAG_UV)) {
+  if (verify && !isUserVerified(authData)) {
     throw new Error('the authenticator did not verify the user');
   }
 
@@ -715,7 +640,7 @@ async function signedData({authenticatorData, clientDataJSON}) {
  *     application (RP ID).
  */
 async function checkApplication({authenticatorData}, key) {
-  if (!equalBytes(authenticatorData.subarray(0, 32),
+  if (!equalBytes(rpIdHash(authenticatorData),
                   await sha256(key.application))) {
     throw new Error('the signature is for another site');
   }

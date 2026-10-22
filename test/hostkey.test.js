@@ -3,8 +3,9 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
+import {concat} from '../src/bytes.js';
 import {verifyHostKeySignature} from '../src/hostkey.js';
-import {concat, encodeString} from '../src/ssh.js';
+import {encodeString} from '../src/ssh.js';
 import {makeHostKey} from './helpers.js';
 
 for (const type of ['ed25519', 'nistp256', 'rsa']) {

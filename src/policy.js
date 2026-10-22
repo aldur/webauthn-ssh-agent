@@ -11,8 +11,9 @@
  */
 
 import {SessionBindings} from './binding.js';
+import {equalBytes} from './bytes.js';
 import {Confirmation} from './settings.js';
-import {describeSignData, equalBytes, fingerprint} from './ssh.js';
+import {describeSignData, fingerprint} from './ssh.js';
 import {displayText} from './text.js';
 
 /**

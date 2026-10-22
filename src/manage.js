@@ -4,12 +4,12 @@
  * @fileoverview The "Manage keys and settings" page.
  */
 
+import {AAGUID_NAMES} from './aaguids.js';
 import {
   Attachment, Kind, createKey, deleteKey, importKey, isMismatched, isVerified,
   keyAuthorizedKeysLine, keyBlob, loadKeys, renameKey, reorderKeys,
   setKeyConfirmation, verifyKey,
 } from './keys.js';
-import {AAGUID_NAMES} from './aaguids.js';
 import {Confirmation, loadSettings, saveSetting} from './settings.js';
 import {fingerprint} from './ssh.js';
 

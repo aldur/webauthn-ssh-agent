@@ -10,9 +10,7 @@
  * it; with Show, a details window beside it shows the request.
  */
 
-import {
-  confirmationFor, isVerified, setKeyConfirmation, sign,
-} from './keys.js';
+import {confirmationFor, isVerified, setKeyConfirmation, sign} from './keys.js';
 import {Decision} from './policy.js';
 import {showRequest} from './request-view.js';
 import {loadSettings} from './settings.js';

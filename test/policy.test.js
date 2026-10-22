@@ -4,8 +4,9 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
 import {SessionBindings} from '../src/binding.js';
+import {concat} from '../src/bytes.js';
 import {Decision, assess} from '../src/policy.js';
-import {concat, encodeString, fingerprint} from '../src/ssh.js';
+import {encodeString, fingerprint} from '../src/ssh.js';
 import {makeHostKey} from './helpers.js';
 
 const STRICT = {allowUnrecognized: false};

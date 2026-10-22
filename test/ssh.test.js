@@ -3,11 +3,11 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
+import {concat, fromBase64} from '../src/bytes.js';
 import {
-  Reader, WEBAUTHN_SK_ECDSA_SIG_TYPE, authorizedKeysLine, concat,
+  Reader, WEBAUTHN_SK_ECDSA_SIG_TYPE, authorizedKeysLine,
   decodeDerEcdsaSignature, describeSignData, encodeMpint, encodeString,
-  fingerprint,
-  fromBase64, fromBase64Url, p256PointFromSpki, skEcdsaKeyBlob, toBase64Url,
+  fingerprint, p256PointFromSpki, skEcdsaKeyBlob,
   webauthnAssertionToSshSignature,
 } from '../src/ssh.js';
 
@@ -20,15 +20,6 @@ const AUTHORIZED_KEY =
     'sk-ecdsa-sha2-nistp256@openssh.com AAAAInNrLWVjZHNhLXNoYTItbmlzdHAyNTZA' +
     'b3BlbnNzaC5jb20AAAAIbmlzdHAyNTYAAABBBFJXDZN53Fvox8rxBLHYxufhMiDjhQfhBf49' +
     '/F+TUlycV8TgKS34PBi5mjf/YS69gcyxCebOwrSPKiO6tIWgADsAAAAJbG9jYWxob3N0';
-
-test('base64url round trip', () => {
-  for (let len = 0; len < 40; ++len) {
-    const bytes = crypto.getRandomValues(new Uint8Array(len));
-    const encoded = toBase64Url(bytes);
-    assert.match(encoded, /^[A-Za-z0-9_-]*$/);
-    assert.deepEqual(fromBase64Url(encoded), bytes);
-  }
-});
 
 test('authorized_keys line', () => {
   const blob = skEcdsaKeyBlob(POINT, 'localhost');

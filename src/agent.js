@@ -9,7 +9,8 @@
  * @see https://datatracker.ietf.org/doc/html/draft-miller-ssh-agent
  */
 
-import {Reader, concat, encodeString, encodeUint32, equalBytes} from './ssh.js';
+import {concat, equalBytes} from './bytes.js';
+import {Reader, encodeString, encodeUint32} from './ssh.js';
 
 export const AGENT_FAILURE = 5;
 export const AGENT_SUCCESS = 6;

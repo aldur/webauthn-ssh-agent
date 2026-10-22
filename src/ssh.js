@@ -10,72 +10,14 @@
  * @see https://github.com/openssh/openssh-portable/blob/master/PROTOCOL.u2f
  */
 
+import {
+  concat, equalBytes, fromBase64Url, sha256, toBase64, toBase64Url,
+} from './bytes.js';
 import {cleanName} from './text.js';
 
 export const SK_ECDSA_KEY_TYPE = 'sk-ecdsa-sha2-nistp256@openssh.com';
 export const WEBAUTHN_SK_ECDSA_SIG_TYPE =
     'webauthn-sk-ecdsa-sha2-nistp256@openssh.com';
-
-/**
- * @param {...!Uint8Array} arrays
- * @return {!Uint8Array}
- */
-export function concat(...arrays) {
-  const ret = new Uint8Array(arrays.reduce((n, a) => n + a.length, 0));
-  let pos = 0;
-  for (const a of arrays) {
-    ret.set(a, pos);
-    pos += a.length;
-  }
-  return ret;
-}
-
-/**
- * @param {!Uint8Array} a
- * @param {!Uint8Array} b
- * @return {boolean}
- */
-export function equalBytes(a, b) {
-  return a.length === b.length && a.every((byte, i) => byte === b[i]);
-}
-
-/**
- * @param {!Uint8Array|!ArrayBuffer} bytes
- * @return {string}
- */
-export function toBase64(bytes) {
-  let str = '';
-  for (const byte of new Uint8Array(bytes)) {
-    str += String.fromCharCode(byte);
-  }
-  return btoa(str);
-}
-
-/**
- * @param {string} str
- * @return {!Uint8Array}
- */
-export function fromBase64(str) {
-  return Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
-}
-
-/**
- * @param {!Uint8Array|!ArrayBuffer} bytes
- * @return {string} Unpadded base64url.
- */
-export function toBase64Url(bytes) {
-  return toBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_')
-      .replace(/=+$/, '');
-}
-
-/**
- * @param {string} str Base64url, with or without padding.
- * @return {!Uint8Array}
- */
-export function fromBase64Url(str) {
-  const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
-  return fromBase64(b64 + '='.repeat((4 - b64.length % 4) % 4));
-}
 
 /**
  * @param {number} value
@@ -386,6 +328,5 @@ export function describeSignData(data) {
  * @return {!Promise<string>} Its fingerprint as ssh shows it ("SHA256:...").
  */
 export async function fingerprint(keyBlob) {
-  const hash = await crypto.subtle.digest('SHA-256', keyBlob);
-  return `SHA256:${toBase64(hash).replace(/=+$/, '')}`;
+  return `SHA256:${toBase64(await sha256(keyBlob)).replace(/=+$/, '')}`;
 }

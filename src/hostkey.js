@@ -11,7 +11,8 @@
  * @see https://www.rfc-editor.org/rfc/rfc8332 (RSA with SHA-2)
  */
 
-import {Reader, concat, toBase64Url} from './ssh.js';
+import {concat, toBase64Url} from './bytes.js';
+import {Reader} from './ssh.js';
 
 /** ECDSA curves: SSH name -> WebCrypto curve, hash & coordinate size. */
 const ECDSA = {

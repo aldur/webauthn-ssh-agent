@@ -13,7 +13,7 @@
  * @see https://github.com/openssh/openssh-portable/blob/master/PROTOCOL.agent
  */
 
-import {equalBytes} from './ssh.js';
+import {equalBytes} from './bytes.js';
 import {verifyHostKeySignature} from './hostkey.js';
 
 /** Bindings per connection, like ssh-agent's AGENT_MAX_SESSION_IDS. */

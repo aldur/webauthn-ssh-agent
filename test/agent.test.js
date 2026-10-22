@@ -8,7 +8,8 @@ import {
   AGENT_FAILURE, AGENT_IDENTITIES_ANSWER, AGENT_SIGN_RESPONSE, AGENT_SUCCESS,
   handleRequest,
 } from '../src/agent.js';
-import {Reader, concat, encodeString, encodeUint32} from '../src/ssh.js';
+import {concat} from '../src/bytes.js';
+import {Reader, encodeString, encodeUint32} from '../src/ssh.js';
 
 const ID1 = {blob: new Uint8Array([1, 2, 3]), comment: 'one'};
 const ID2 = {blob: new Uint8Array([4, 5]), comment: 'two'};

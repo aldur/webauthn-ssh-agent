@@ -3,8 +3,9 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
-import {findApplication, sha256} from '../src/keys.js';
-import {toBase64Url} from '../src/ssh.js';
+import {sha256, toBase64Url} from '../src/bytes.js';
+import {findApplication} from '../src/keys.js';
+import {attested, authDataHeader, credProtect} from './helpers.js';
 
 test('findApplication', async () => {
   const hash = await sha256('chrome-extension://abcdef');
@@ -36,51 +37,6 @@ function fakeStorage() {
   return {sync, local};
 }
 
-// Authenticator data, as authenticators make it.
-const header = (flags, rpIdHash = new Uint8Array(32)) =>
-  [...rpIdHash, flags, 0, 0, 0, 1];
-// A COSE P-256 key: {1: 2, 3: -7, -1: 1, -2: x, -3: y}.
-const coseKey = [0xa5, 0x01, 0x02, 0x03, 0x26, 0x20, 0x01,
-                 0x21, 0x58, 32, ...new Uint8Array(32).fill(1),
-                 0x22, 0x58, 32, ...new Uint8Array(32).fill(2)];
-// AAGUID, credential ID 09090909, public key.
-const attested = [...new Uint8Array(16), 0, 4, 9, 9, 9, 9, ...coseKey];
-// {"credProtect": 3}
-const credProtect = [0xa1, 0x6b, ...new TextEncoder().encode('credProtect'),
-                     0x03];
-
-test('authDataExtensions: what the authenticator reported', async () => {
-  const {authDataExtensions} = await import('../src/keys.js');
-
-  // On creation: attested credential data (AT), then extensions (ED).
-  assert.equal(authDataExtensions(new Uint8Array(
-      [...header(0x40 | 0x80 | 0x05), ...attested, ...credProtect]))
-      .get('credProtect'), 3);
-  // On use: just extensions.
-  assert.equal(authDataExtensions(new Uint8Array(
-      [...header(0x80 | 0x01), ...credProtect])).get('credProtect'), 3);
-  // None, or unreadable.
-  assert.equal(authDataExtensions(new Uint8Array(
-      [...header(0x40 | 0x05), ...attested])).size, 0);
-  assert.equal(authDataExtensions(new Uint8Array(
-      [...header(0x40 | 0x80 | 0x05), ...attested.slice(0, 30)])).size, 0);
-  assert.equal(authDataExtensions(new Uint8Array(10)).size, 0);
-});
-
-test('aaguidOf: the model, unless it was hidden', async () => {
-  const {aaguidOf} = await import('../src/keys.js');
-  const aaguid = [0xee, 0x88, 0x28, 0x79, 0x72, 0x1c, 0x49, 0x13,
-                  0x97, 0x75, 0x3d, 0xfc, 0xce, 0x97, 0x07, 0x2a];
-  const withAaguid = (bytes) => new Uint8Array(
-      [...header(0x45), ...bytes, ...attested.slice(16)]);
-  assert.equal(aaguidOf(withAaguid(aaguid)),
-               'ee882879-721c-4913-9775-3dfcce97072a');
-  // Browsers often zero it without attestation.
-  assert.equal(aaguidOf(withAaguid(new Uint8Array(16))), undefined);
-  // Only creating a credential reports one.
-  assert.equal(aaguidOf(new Uint8Array(header(0x05))), undefined);
-});
-
 test('createKey: PIN enforcement as the authenticator reports it', async () => {
   const {createKey} = await import('../src/keys.js');
   // What Chrome returns: credProtect's output only in the authenticator
@@ -96,7 +52,7 @@ test('createKey: PIN enforcement as the authenticator reports it', async () => {
           [...new Uint8Array(26), 4, ...new Uint8Array(64).fill(1)]).buffer,
       getTransports: () => ['usb'],
       getAuthenticatorData: () => new Uint8Array([
-        ...header(0x45 | (extensions.length ? 0x80 : 0), rpIdHash),
+        ...authDataHeader(0x45 | (extensions.length ? 0x80 : 0), rpIdHash),
         ...attested, ...extensions]).buffer,
     },
   });
@@ -190,7 +146,6 @@ test('a key\'s own confirmation level, for keys verified here', async () => {
   assert.equal(await confirmationFor(key, settings), 'review');
 
   // Verified here: its own level applies.
-  const {sha256} = await import('../src/keys.js');
   local['verified:a'] = toBase64Url(await sha256(JSON.stringify(
       [key.credentialId, key.publicKey, key.application, key.verify])));
   assert.equal(await confirmationFor(key, settings), 'silent');
