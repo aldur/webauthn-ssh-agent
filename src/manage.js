@@ -507,8 +507,8 @@ function renderKey(key, verified, keyFingerprint) {
       renderVerified(key, verified),
       key.resident ?
           markCell('✓', 'yes', 'Discoverable credential (resident key)') :
-          markCell('', '', 'Non-discoverable: needs the credential ID kept ' +
-                   'here'),
+          markCell('', '', 'Non-discoverable: needs its credential ID, ' +
+                   'which this extension keeps (synced)'),
       renderBackup(key),
       renderUv(key),
       level,
@@ -574,7 +574,7 @@ async function run(startMessage, operation) {
 function leftover(key) {
   return key.resident ?
       'The authenticator still stores it; delete it there if you like ' +
-          '(e.g. `ykman fido credentials delete`).' :
+          '(e.g. ykman fido credentials delete).' :
       'Nothing was stored on the authenticator.';
 }
 
@@ -593,8 +593,8 @@ $('create').onclick = () => {
       verify: $('verify').checked,
       // Chrome's prompt offers other places: make sure it's what they want.
       keep: async (key) => !isMismatched(key) || confirm(
-          `"${key.comment}" is backup eligible (multi-device): it can ` +
-          'sync, unlike on a security key.  Keep it?'),
+          `"${key.comment}" can sync (it's backup eligible), so it isn't ` +
+          'bound to one security key.  Keep it?'),
     });
     $('name').value = '';
     $('verify').checked = false;

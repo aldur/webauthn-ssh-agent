@@ -72,7 +72,7 @@ async function trySign(request) {
     // Name the key: ssh tries keys one by one, so it may not be the one
     // the user expects.
     $('status').textContent = `Confirm with "${request.key.comment}"` +
-        (request.key.verify ? ', and your PIN or fingerprint…' : '…');
+        (request.key.verify ? ' and your PIN or fingerprint…' : '…');
   }
   try {
     const signature = await sign(request.key, Uint8Array.from(request.data));
