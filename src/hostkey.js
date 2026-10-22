@@ -57,6 +57,75 @@ function pad(bytes, size) {
 }
 
 /**
+ * @param {!Reader} key The rest of an "ssh-ed25519" key blob.
+ * @param {string} sigType
+ * @param {!Uint8Array} sigBytes
+ * @param {!Uint8Array} data
+ * @return {!Promise<boolean>}
+ */
+async function verifyEd25519(key, sigType, sigBytes, data) {
+  const publicKey = key.string();
+  if (!key.eom() || sigType !== 'ssh-ed25519' || publicKey.length !== 32 ||
+      sigBytes.length !== 64) {
+    return false;
+  }
+  const cryptoKey = await crypto.subtle.importKey(
+      'raw', publicKey, {name: 'Ed25519'}, false, ['verify']);
+  return crypto.subtle.verify({name: 'Ed25519'}, cryptoKey, sigBytes, data);
+}
+
+/**
+ * @param {!Reader} key The rest of an "ecdsa-sha2-*" key blob.
+ * @param {string} keyType
+ * @param {string} sigType
+ * @param {!Uint8Array} sigBytes
+ * @param {!Uint8Array} data
+ * @return {!Promise<boolean>}
+ */
+async function verifyEcdsa(key, keyType, sigType, sigBytes, data) {
+  const curveName = key.text();
+  const params = ECDSA[curveName];
+  const point = key.string();
+  if (!params || !key.eom() || keyType !== `ecdsa-sha2-${curveName}` ||
+      sigType !== keyType) {
+    return false;
+  }
+  // SSH signs as two mpints, r & s; WebCrypto wants them fixed size.
+  const rs = new Reader(sigBytes);
+  const raw = concat(pad(rs.string(), params.size),
+                     pad(rs.string(), params.size));
+  if (!rs.eom()) {
+    return false;
+  }
+  const cryptoKey = await crypto.subtle.importKey(
+      'raw', point, {name: 'ECDSA', namedCurve: params.curve}, false,
+      ['verify']);
+  return crypto.subtle.verify(
+      {name: 'ECDSA', hash: params.hash}, cryptoKey, raw, data);
+}
+
+/**
+ * @param {!Reader} key The rest of an "ssh-rsa" key blob.
+ * @param {string} sigType
+ * @param {!Uint8Array} sigBytes
+ * @param {!Uint8Array} data
+ * @return {!Promise<boolean>}
+ */
+async function verifyRsa(key, sigType, sigBytes, data) {
+  const hash = RSA_HASHES[sigType];
+  const e = unsigned(key.string());
+  const n = unsigned(key.string());
+  if (!hash || !key.eom()) {
+    return false;
+  }
+  const cryptoKey = await crypto.subtle.importKey(
+      'jwk', {kty: 'RSA', n: toBase64Url(n), e: toBase64Url(e)},
+      {name: 'RSASSA-PKCS1-v1_5', hash}, false, ['verify']);
+  return crypto.subtle.verify(
+      {name: 'RSASSA-PKCS1-v1_5'}, cryptoKey, sigBytes, data);
+}
+
+/**
  * Verify a host key's signature.
  *
  * @param {!Uint8Array} keyBlob The SSH public key blob.
@@ -75,52 +144,14 @@ export async function verifyHostKeySignature(keyBlob, signatureBlob, data) {
     if (!sig.eom()) {
       return false;
     }
-
     if (keyType === 'ssh-ed25519') {
-      const publicKey = key.string();
-      if (!key.eom() || sigType !== keyType || publicKey.length !== 32 ||
-          sigBytes.length !== 64) {
-        return false;
-      }
-      const cryptoKey = await crypto.subtle.importKey(
-          'raw', publicKey, {name: 'Ed25519'}, false, ['verify']);
-      return await crypto.subtle.verify(
-          {name: 'Ed25519'}, cryptoKey, sigBytes, data);
+      return await verifyEd25519(key, sigType, sigBytes, data);
     }
-
     if (keyType.startsWith('ecdsa-sha2-')) {
-      const curveName = key.text();
-      const params = ECDSA[curveName];
-      const point = key.string();
-      if (!params || !key.eom() || keyType !== `ecdsa-sha2-${curveName}` ||
-          sigType !== keyType) {
-        return false;
-      }
-      const rs = new Reader(sigBytes);
-      const raw = concat(pad(rs.string(), params.size),
-                         pad(rs.string(), params.size));
-      if (!rs.eom()) {
-        return false;
-      }
-      const cryptoKey = await crypto.subtle.importKey(
-          'raw', point, {name: 'ECDSA', namedCurve: params.curve}, false,
-          ['verify']);
-      return await crypto.subtle.verify(
-          {name: 'ECDSA', hash: params.hash}, cryptoKey, raw, data);
+      return await verifyEcdsa(key, keyType, sigType, sigBytes, data);
     }
-
     if (keyType === 'ssh-rsa') {
-      const hash = RSA_HASHES[sigType];
-      const e = unsigned(key.string());
-      const n = unsigned(key.string());
-      if (!hash || !key.eom()) {
-        return false;
-      }
-      const cryptoKey = await crypto.subtle.importKey(
-          'jwk', {kty: 'RSA', n: toBase64Url(n), e: toBase64Url(e)},
-          {name: 'RSASSA-PKCS1-v1_5', hash}, false, ['verify']);
-      return await crypto.subtle.verify(
-          {name: 'RSASSA-PKCS1-v1_5'}, cryptoKey, sigBytes, data);
+      return await verifyRsa(key, sigType, sigBytes, data);
     }
   } catch (e) {
     // Malformed input.

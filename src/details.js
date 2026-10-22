@@ -7,10 +7,10 @@
 
 import {showRequest} from './request-view.js';
 
-const request = await chrome.runtime.sendMessage(
-    {type: 'get-request-details', id: location.hash.slice(1)});
+const id = location.hash.slice(1);
+const request =
+    await chrome.runtime.sendMessage({type: 'get-request-details', id});
 if (request) {
   showRequest(request);
-  chrome.runtime.sendMessage(
-      {type: 'details-shown', id: location.hash.slice(1)});
+  chrome.runtime.sendMessage({type: 'details-shown', id});
 }

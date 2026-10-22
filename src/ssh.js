@@ -19,6 +19,23 @@ export const SK_ECDSA_KEY_TYPE = 'sk-ecdsa-sha2-nistp256@openssh.com';
 export const WEBAUTHN_SK_ECDSA_SIG_TYPE =
     'webauthn-sk-ecdsa-sha2-nistp256@openssh.com';
 
+/** The message a login signs (RFC 4252). */
+const SSH_MSG_USERAUTH_REQUEST = 50;
+
+/**
+ * What an SSH client asked us to sign.
+ *
+ * @enum {string}
+ */
+export const SignedData = {
+  /** A login (SSH_MSG_USERAUTH_REQUEST). */
+  LOGIN: 'login',
+  /** A file or commit signature (ssh-keygen -Y sign). */
+  SSHSIG: 'sshsig',
+  /** Anything else. */
+  UNKNOWN: 'unknown',
+};
+
 /**
  * @param {number} value
  * @return {!Uint8Array}
@@ -279,48 +296,48 @@ export function webauthnAssertionToSshSignature(
  *     (section 2.5, publickey-hostbound-v00@openssh.com)
  * @see https://github.com/openssh/openssh-portable/blob/master/PROTOCOL.sshsig
  * @param {!Uint8Array} data
- * @return {{kind: string, user: (string|undefined),
+ * @return {{kind: !SignedData, user: (string|undefined),
  *           sessionId: (!Uint8Array|undefined),
  *           hostKey: (!Uint8Array|undefined),
- *           namespace: (string|undefined)}} kind is "login" (user &
- *     sessionId are set, and hostKey if known), "sshsig" (a file/commit
- *     signature; namespace is set), or "unknown".  The strings are untrusted:
- *     see text.js before showing them.
+ *           namespace: (string|undefined)}} For a LOGIN, user & sessionId
+ *     are set, and hostKey if known; for an SSHSIG, namespace.  The strings
+ *     are untrusted: see text.js before showing them.
  */
 export function describeSignData(data) {
   try {
     const magic = new TextEncoder().encode('SSHSIG');
     if (equalBytes(data.subarray(0, magic.length), magic)) {
       const r = new Reader(data.subarray(magic.length));
-      return {kind: 'sshsig', namespace: r.text()};
+      return {kind: SignedData.SSHSIG, namespace: r.text()};
     }
 
     const r = new Reader(data);
     const sessionId = r.string();
-    if (r.byte() !== 50) {  // SSH_MSG_USERAUTH_REQUEST.
-      return {kind: 'unknown'};
+    if (r.byte() !== SSH_MSG_USERAUTH_REQUEST) {
+      return {kind: SignedData.UNKNOWN};
     }
     const user = r.text();
     const service = r.text();
     const method = r.text();
+    // With a signature (TRUE): not a query.
     if (service !== 'ssh-connection' || r.byte() !== 1) {
-      return {kind: 'unknown'};
+      return {kind: SignedData.UNKNOWN};
     }
     r.string();  // Public key algorithm.
     r.string();  // Public key.
     if (method === 'publickey' && r.eom()) {
-      return {kind: 'login', user, sessionId};
+      return {kind: SignedData.LOGIN, user, sessionId};
     }
     if (method === 'publickey-hostbound-v00@openssh.com') {
       const hostKey = r.string();
       if (r.eom()) {
-        return {kind: 'login', user, sessionId, hostKey};
+        return {kind: SignedData.LOGIN, user, sessionId, hostKey};
       }
     }
   } catch (e) {
-    // Fall through.
+    // Malformed: fall through.
   }
-  return {kind: 'unknown'};
+  return {kind: SignedData.UNKNOWN};
 }
 
 /**

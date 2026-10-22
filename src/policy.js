@@ -13,7 +13,7 @@
 import {SessionBindings} from './binding.js';
 import {equalBytes} from './bytes.js';
 import {Confirmation} from './settings.js';
-import {describeSignData, fingerprint} from './ssh.js';
+import {SignedData, describeSignData, fingerprint} from './ssh.js';
 import {displayText} from './text.js';
 
 /**
@@ -47,75 +47,91 @@ export const Decision = {
 export let Fields;
 
 /**
+ * @param {!SessionBindings} bindings
+ * @return {!Promise<string>} Where the request comes from, for the user.
+ */
+async function describeRoute(bindings) {
+  if (!bindings.last) {
+    return 'Unknown (your SSH client didn\'t say)';
+  }
+  if (bindings.forwarded) {
+    return 'Through a forwarded agent, on server ' +
+        await fingerprint(bindings.first.hostKey);
+  }
+  return 'Direct connection';
+}
+
+/**
+ * @param {{user: string, sessionId: !Uint8Array,
+ *          hostKey: (!Uint8Array|undefined)}} login From describeSignData.
+ * @param {!SessionBindings} bindings
+ * @param {!Confirmation} confirmation For direct logins to a bound server.
+ * @param {string} route
+ * @return {!Promise<{decision: !Decision, reason: (string|undefined),
+ *                    fields: (!Fields|undefined)}>}
+ */
+async function assessLogin(login, bindings, confirmation, route) {
+  const last = bindings.last;
+  let server = 'unknown';
+  if (last && !last.forwarded) {
+    // The bound session is the one being logged in to: it must match.
+    if (!equalBytes(login.sessionId, last.sessionId) ||
+        (login.hostKey && !equalBytes(login.hostKey, last.hostKey))) {
+      return {decision: Decision.REFUSE, reason: 'session mismatch'};
+    }
+    server = `${await fingerprint(last.hostKey)} (verified)`;
+  } else if (login.hostKey) {
+    server = `${await fingerprint(login.hostKey)} (not verified)`;
+  }
+  const fields = {
+    action: 'Log in',
+    user: displayText(login.user),
+    server,
+    route,
+  };
+
+  // A direct login to a bound server: as the user chose.
+  if (last && !bindings.forwarded) {
+    const decision = {
+      [Confirmation.SHOW]: Decision.SHOW,
+      [Confirmation.SILENT]: Decision.SILENT,
+    }[confirmation] ?? Decision.ASK;
+    return {decision, fields};
+  }
+  fields.warning = bindings.forwarded ?
+      'A server you forwarded your agent to wants to log in elsewhere ' +
+          'with your key.  Only continue if you just ran ssh there.' :
+      'Your SSH client didn\'t say which server this is for.  Only ' +
+          'continue if you expected it.';
+  return {decision: Decision.CONFIRM, fields};
+}
+
+/**
  * @param {!Uint8Array} data The data to sign.
  * @param {!SessionBindings} bindings The connection's session bindings.
- * @param {{allowUnrecognized: boolean, confirmation: string}} settings
+ * @param {{allowUnrecognized: boolean, confirmation: !Confirmation}} settings
  * @return {!Promise<{decision: !Decision, reason: (string|undefined),
  *                    fields: (!Fields|undefined)}>}
  */
 export async function assess(data, bindings, settings) {
   const what = describeSignData(data);
-
-  if (what.kind === 'unknown' && !settings.allowUnrecognized) {
+  if (what.kind === SignedData.UNKNOWN && !settings.allowUnrecognized) {
     return {decision: Decision.REFUSE, reason: 'unrecognized data'};
   }
-
-  // Where the request comes from.
-  const last = bindings.last;
-  let route;
-  if (!last) {
-    route = 'Unknown (your SSH client didn\'t say)';
-  } else if (bindings.forwarded) {
-    route = 'Through a forwarded agent, on server ' +
-        await fingerprint(bindings.first.hostKey);
-  } else {
-    route = 'Direct connection';
+  const route = await describeRoute(bindings);
+  switch (what.kind) {
+    case SignedData.LOGIN:
+      return assessLogin(what, bindings, settings.confirmation, route);
+    case SignedData.SSHSIG:
+      return {decision: Decision.CONFIRM, fields: {
+        action: 'Sign data (not a login)',
+        namespace: displayText(what.namespace),
+        server: 'not applicable',
+        route,
+        warning: 'This is not a login.  Only continue if you are signing ' +
+            'something, e.g. a git commit.',
+      }};
   }
-
-  if (what.kind === 'login') {
-    let server = 'unknown';
-    if (last && !last.forwarded) {
-      // The bound session is the one being logged in to: it must match.
-      if (!equalBytes(what.sessionId, last.sessionId) ||
-          (what.hostKey && !equalBytes(what.hostKey, last.hostKey))) {
-        return {decision: Decision.REFUSE, reason: 'session mismatch'};
-      }
-      server = `${await fingerprint(last.hostKey)} (verified)`;
-    } else if (what.hostKey) {
-      server = `${await fingerprint(what.hostKey)} (not verified)`;
-    }
-    const fields = {
-      action: 'Log in',
-      user: displayText(what.user),
-      server,
-      route,
-    };
-    if (last && !bindings.forwarded) {
-      const decision = {
-        [Confirmation.SHOW]: Decision.SHOW,
-        [Confirmation.SILENT]: Decision.SILENT,
-      }[settings.confirmation] ?? Decision.ASK;
-      return {decision, fields};
-    }
-    fields.warning = bindings.forwarded ?
-        'A server you forwarded your agent to wants to log in elsewhere ' +
-            'with your key.  Only continue if you just ran ssh there.' :
-        'Your SSH client didn\'t say which server this is for.  Only ' +
-            'continue if you expected it.';
-    return {decision: Decision.CONFIRM, fields};
-  }
-
-  if (what.kind === 'sshsig') {
-    return {decision: Decision.CONFIRM, fields: {
-      action: 'Sign data (not a login)',
-      namespace: displayText(what.namespace),
-      server: 'not applicable',
-      route,
-      warning: 'This is not a login.  Only continue if you are signing ' +
-          'something, e.g. a git commit.',
-    }};
-  }
-
   return {decision: Decision.CONFIRM, fields: {
     action: 'Sign unrecognized data',
     server: 'unknown',

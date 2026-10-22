@@ -24,6 +24,10 @@ const FAILURE = new Uint8Array([AGENT_FAILURE]);
 const SUCCESS = new Uint8Array([AGENT_SUCCESS]);
 
 /**
+ * A key the agent offers: its SSH public key blob & comment.  The backend
+ * may add fields of its own (e.g. the key it stands for), which it gets back
+ * in sign().
+ *
  * @typedef {{
  *   blob: !Uint8Array,
  *   comment: string,
