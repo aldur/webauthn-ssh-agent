@@ -158,7 +158,9 @@ const {authenticatorId} = await optionsCdp.send(
 await options.goto(`chrome-extension://${agentId}/src/manage.html`);
 const status = options.locator('#status');
 
-// The test uses Secure Shell's dev build, which needs the user's opt in.
+// The test uses Secure Shell's dev build, which needs the user's opt in
+// (under Advanced).
+await options.locator('#advanced summary').click();
 await options.check('#allowDevSecureShell');
 await options.waitForFunction(async () =>
   (await chrome.storage.local.get('settings')).settings

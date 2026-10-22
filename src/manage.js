@@ -36,12 +36,9 @@ const COLUMNS = [
   ['Attachment', 'authenticatorAttachment, as last reported.\n' +
                  'Platform: built into the computer (OS or browser).\n' +
                  'Cross-platform: roaming, e.g. a security key (USB, NFC, ' +
-                 'Bluetooth) or a phone (hybrid).'],
-  ['AAGUID', 'The authenticator\'s model ID, as reported when the key was ' +
-             'created.\n' +
-             '✓ Reported: hover for the model, from a community list.\n' +
-             'Blank: not reported (browsers often send all zeros), or the ' +
-             'key is older than this column.'],
+                 'Bluetooth) or a phone (hybrid).\n' +
+                 'Hover a cell for its transports & model (AAGUID), when ' +
+                 'reported.'],
   ['Verified', 'Whether this computer checked the public key with the ' +
                'authenticator.  Synced keys need this once per computer: ' +
                'whoever controls your Google account could swap the public ' +
@@ -360,32 +357,25 @@ function acceptDrops(tr, id) {
 
 /**
  * @param {!Object} key A StoredKey.
- * @return {!Element} Its authenticatorAttachment, & transports on hover.
+ * @return {!Element} Its authenticatorAttachment, & transports & model on
+ *     hover.
  */
 function renderAttachment(key) {
-  const transports = key.transports?.length ?
-      `\nTransports: ${key.transports.join(', ')}` : '';
+  // What else the authenticator reported when the key was created.
+  const details = [
+    key.transports?.length && `Transports: ${key.transports.join(', ')}`,
+    key.aaguid && `Model: ${AAGUID_NAMES.get(key.aaguid) ?? 'unknown'} ` +
+        `(AAGUID ${key.aaguid})`,
+  ].filter(Boolean).map((line) => `\n${line}`).join('');
   switch (key.attachment) {
     case Attachment.PLATFORM:
       return element('td', '', 'Platform',
-                     `Platform: built into the computer${transports}`);
+                     `Platform: built into the computer${details}`);
     case Attachment.CROSS_PLATFORM:
       return element('td', '', 'Cross-platform',
-                     `Cross-platform: a roaming authenticator${transports}`);
+                     `Cross-platform: a roaming authenticator${details}`);
   }
-  return element('td', 'weak', '?', UNKNOWN);
-}
-
-/**
- * @param {!Object} key A StoredKey.
- * @return {!Element} ✓ if it has an AAGUID, with its model on hover.
- */
-function renderAaguid(key) {
-  if (!key.aaguid) {
-    return markCell('', '', 'Not reported');
-  }
-  const model = AAGUID_NAMES.get(key.aaguid) ?? 'Unknown model';
-  return markCell('✓', 'yes', `${model}\nAAGUID ${key.aaguid}`);
+  return element('td', 'weak', '?', UNKNOWN + details);
 }
 
 /**
@@ -514,7 +504,6 @@ function renderKey(key, verified, keyFingerprint) {
       renderGrip(key),
       renderName(key, keyFingerprint),
       renderAttachment(key),
-      renderAaguid(key),
       renderVerified(key, verified),
       key.resident ?
           markCell('✓', 'yes', 'Discoverable credential (resident key)') :

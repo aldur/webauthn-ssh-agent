@@ -42,23 +42,20 @@
     </label>
     <fieldset>
       <legend>What to ask Chrome for</legend>
-      <label>
+      <label data-tip="A non-discoverable credential on a cross-platform authenticator (YubiKey, Titan, …). Its encrypted private key is the credential ID, synced in your Chrome profile.">
         <input type="radio" name="where" value="security-key" checked />
-        <b>Security key</b> (YubiKey, Titan, …): a non-discoverable
-        credential on a cross-platform authenticator.  Only that security
-        key can use it.
+        <b>Security key</b>: works with that security key, wherever your
+        Chrome profile syncs
       </label>
-      <label>
+      <label data-tip="A discoverable credential (resident key) on a cross-platform authenticator, kept in one of its slots. Needs FIDO2.">
         <input type="radio" name="where" value="discoverable" />
-        <b>Security key, stored on the key</b>: a discoverable credential
-        (resident key) on a cross-platform authenticator, so you can import
-        it on any computer with just the security key.  Needs FIDO2.
+        <b>Security key, stored on the key</b>: works with that security key
+        anywhere, after <b>Import</b>
       </label>
-      <label>
+      <label data-tip="A discoverable credential on a platform authenticator (Google Password Manager, iCloud Keychain, Windows Hello, ChromeOS) or a phone, usually backed up (synced).">
         <input type="radio" name="where" value="passkey" />
-        <b>Passkey</b> (Google Password Manager, iCloud Keychain, Windows
-        Hello, a phone, …): a discoverable credential on a platform
-        authenticator or phone, usually backed up (synced).
+        <b>Passkey</b>: kept by your password manager or phone, usually
+        synced
       </label>
     </fieldset>
     <label>
@@ -71,8 +68,8 @@
       each authenticator reported.
     </p>
     <p>
-      Made a discoverable key or passkey with this extension on another
-      computer?  <button id="import">Import</button>
+      <button id="import" data-tip="A security key stored on the key, or a passkey, made with this extension on another computer">Import a key from
+        another computer</button>
     </p>
 
     <h2>Settings</h2>
@@ -90,21 +87,24 @@
       computer sets its own level.  Requests with a warning are always
       reviewed.
     </p>
-    <label>
-      <input id="allowDevSecureShell" type="checkbox" />
-      Also accept requests from <b>Secure Shell (dev)</b>
-    </label>
-    <label>
-      <input id="trustSyncedKeys" type="checkbox" />
-      <b>Trust keys synced</b> from your other computers without verifying
-      them.  Whoever controls your Google account could then get their own
-      public key onto your servers.
-    </label>
-    <label>
-      <input id="allowUnrecognized" type="checkbox" />
-      Offer to sign <b>unrecognized data</b> (neither an SSH login nor a file
-      signature), instead of refusing it
-    </label>
+    <details id="advanced">
+      <summary>Advanced</summary>
+      <label>
+        <input id="allowDevSecureShell" type="checkbox" />
+        Also accept requests from <b>Secure Shell (dev)</b>
+      </label>
+      <label>
+        <input id="trustSyncedKeys" type="checkbox" />
+        <b>Trust keys synced</b> from your other computers without verifying
+        them.  Whoever controls your Google account could then get their own
+        public key onto your servers.
+      </label>
+      <label>
+        <input id="allowUnrecognized" type="checkbox" />
+        Offer to sign <b>unrecognized data</b> (neither an SSH login nor a
+        file signature), instead of refusing it
+      </label>
+    </details>
 
     <details>
       <summary>Where do my keys live?</summary>
