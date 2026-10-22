@@ -15,14 +15,15 @@
  *   key is stored in one of the security key's slots, so it can be found &
  *   imported again with just the security key.
  * * Passkey provider (Google Password Manager, iCloud Keychain, Windows
- *   Hello, a password manager, a phone): always a discoverable credential,
- *   kept (and maybe synced) by the provider.
+ *   Hello, ChromeOS, a phone): always a discoverable credential, kept (and
+ *   maybe synced) by the provider.
  *
- * Either way we keep only public data (public key, credential ID, RP ID &
- * settings) in chrome.storage.sync, one item per key, which Chrome syncs
- * across the user's devices if sync is on.  Synced data is untrusted: it's
- * validated on load, and a key's public key is only offered for copying into
- * authorized_keys once this computer has verified it (see verifyKey()).
+ * Either way we keep only public data (public key, credential ID, RP ID,
+ * settings & what the authenticator reported) in chrome.storage.sync, one
+ * item per key, which Chrome syncs across the user's devices if sync is on.
+ * Synced data is untrusted: it's validated on load, and until this computer
+ * has verified a key (see verifyKey()), copying its public key comes with a
+ * warning & its own confirmation level is ignored.
  *
  * Keys are bound to this extension's RP ID (its chrome-extension:// origin):
  * browsers never let an extension assert the "ssh:" application that
@@ -488,14 +489,18 @@ export function keyAuthorizedKeysLine(key) {
  *
  * @param {string} comment Name for the key.
  * @param {{kind: (!Kind|undefined), resident: (boolean|undefined),
- *          verify: (boolean|undefined)}=} options
+ *          verify: (boolean|undefined),
+ *          keep: (function(!StoredKey): !Promise<boolean>|undefined)}=}
+ *     options
  *     kind: what to steer the browser's dialog towards (the user can still
- *     pick something else).  resident: for security keys, store the key on it
- *     as a discoverable credential so it can be imported elsewhere (passkeys
- *     always are).  verify: require user verification (PIN/biometric), not
- *     just a touch, for every use.  keep: called with the new key before
- *     saving it; resolves to whether to keep it (if not, createKey rejects
- *     with "not kept", the error's key property being the new key).
+ *     pick something else).
+ *     resident: for security keys, store the key on it as a discoverable
+ *     credential so it can be imported elsewhere (passkeys always are).
+ *     verify: require user verification (a PIN or biometric), not just a
+ *     touch, for every use.
+ *     keep: called with the new key before saving it; resolves to whether to
+ *     keep it.  If not, createKey rejects with "not kept", the error's key
+ *     property being the new key.
  * @return {!Promise<!StoredKey>}
  */
 export async function createKey(
@@ -529,7 +534,7 @@ export async function createKey(
         // Ask whether a discoverable credential was made.
         credProps: true,
         // CTAP credProtect: have the authenticator itself refuse to use a
-        // "verify" key without a PIN/biometric, and refuse to list
+        // "verify" key without a PIN or biometric, and refuse to list
         // discoverable credentials without one.
         credentialProtectionPolicy: verify ? 'userVerificationRequired' :
             'userVerificationOptionalWithCredentialIDList',

@@ -4,7 +4,7 @@
  * @fileoverview Showing a signature request: shared by the touch window and
  * the details window beside it.
  *
- * The background page prepares display-safe, labelled facts (see policy.js);
+ * The service worker prepares display-safe, labelled facts (see policy.js);
  * this only shows them, as text.
  */
 

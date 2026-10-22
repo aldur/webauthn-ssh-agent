@@ -26,10 +26,11 @@ unpacked** the folder.
 3. Connect, check the request that pops up, click **Continue** (or press
    Enter), and confirm with your security key or passkey.
 
-For direct logins to a verified server, the **Confirmation** level (per key,
-synced, or a default) sets how much you see: **Review** (the default) shows
-the request and waits for Continue, **Show** opens the prompt right away with
-the request beside it, and **Silent** only shows the prompt.  A key's own
+For direct logins to a verified server, the **Confirmation** level, set per
+key (synced with it) or as a default, sets how much you see: **Review** (the
+default) shows the request and waits for Continue, **Show** opens the security
+key or passkey prompt right away with the request beside it, and **Silent**
+only shows that prompt.  A key's own
 level applies once it's verified on this computer.  Other requests are always
 reviewed.
 
@@ -116,7 +117,7 @@ Keys are bound to the extension's origin.
 node --test 'test/*.test.js'   # unit tests
 ./test/e2e/run.sh              # end to end; needs sshd, jq & Playwright
 scripts/package.sh out.zip     # --store: Chrome Web Store build
-node scripts/store-assets.mjs  # Store images
+node scripts/store-assets.mjs  # store images
 node scripts/aaguids.mjs       # refresh authenticator model names
 ```
 

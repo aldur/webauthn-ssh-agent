@@ -22,12 +22,12 @@ const DETAILS_MIN_HEIGHT = 420;
 const id = location.hash.slice(1);
 const $ = (elementId) => document.getElementById(elementId);
 
-// Closing this window cancels the request: the background page sees this
+// Closing this window cancels the request: the service worker sees this
 // port close.
 chrome.runtime.connect({name: 'sign'});
 
 /**
- * Report the result to the background page, which closes this window.
+ * Report the result to the service worker, which closes this window.
  *
  * @param {!Object} result {signature: !Array<number>} or {error: string}.
  */
@@ -55,7 +55,7 @@ function detailsBounds() {
 }
 
 /**
- * @param {!Object} request From the background page.
+ * @param {!Object} request From the service worker.
  */
 async function trySign(request) {
   $('continue').classList.add('hidden');
