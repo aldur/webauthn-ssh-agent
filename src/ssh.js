@@ -11,11 +11,14 @@
  */
 
 import {
-  concat, equalBytes, fromBase64Url, sha256, toBase64, toBase64Url,
+  concat, equalBytes, fromBase64, fromBase64Url, sha256, toBase64,
+  toBase64Url,
 } from './bytes.js';
 import {cleanName} from './text.js';
 
 export const SK_ECDSA_KEY_TYPE = 'sk-ecdsa-sha2-nistp256@openssh.com';
+export const SK_ECDSA_CERT_TYPE =
+    'sk-ecdsa-sha2-nistp256-cert-v01@openssh.com';
 export const WEBAUTHN_SK_ECDSA_SIG_TYPE =
     'webauthn-sk-ecdsa-sha2-nistp256@openssh.com';
 
@@ -117,6 +120,12 @@ export class Reader {
     return new DataView(bytes.buffer, bytes.byteOffset).getUint32(0);
   }
 
+  /** @return {bigint} */
+  uint64() {
+    const bytes = this.read(8);
+    return new DataView(bytes.buffer, bytes.byteOffset).getBigUint64(0);
+  }
+
   /** @return {!Uint8Array} */
   string() {
     return this.read(this.uint32());
@@ -141,6 +150,127 @@ export function skEcdsaKeyBlob(publicKey, application) {
       encodeString('nistp256'),
       encodeString(publicKey),
       encodeString(application));
+}
+
+/**
+ * An OpenSSH user certificate for an sk-ecdsa key: the blob, & what it says.
+ * Times are in seconds since the epoch; validBefore is null for "forever".
+ * verifyRequired is its verify-required option: servers then insist on user
+ * verification.
+ *
+ * @typedef {{
+ *   blob: !Uint8Array,
+ *   publicKey: !Uint8Array,
+ *   application: string,
+ *   keyId: string,
+ *   principals: !Array<string>,
+ *   validAfter: number,
+ *   validBefore: ?number,
+ *   verifyRequired: boolean,
+ * }}
+ */
+export let Certificate;
+
+/** OpenSSH's SSH2_CERT_TYPE_USER. */
+const CERT_TYPE_USER = 1;
+
+/** A certificate's validBefore for "forever". */
+const CERT_FOREVER = 0xffffffffffffffffn;
+
+/**
+ * @param {!Uint8Array} list Concatenated SSH strings.
+ * @return {!Array<string>}
+ */
+function readStringList(list) {
+  const r = new Reader(list);
+  const strings = [];
+  while (!r.eom()) {
+    strings.push(r.text());
+  }
+  return strings;
+}
+
+/**
+ * @param {!Uint8Array} options A certificate's options: name & data pairs.
+ * @return {!Array<string>} Their names.
+ */
+function readOptionNames(options) {
+  return readStringList(options).filter((_, i) => i % 2 === 0);
+}
+
+/**
+ * Parse an sk-ecdsa user certificate.  Its CA signature isn't checked:
+ * that's the server's job.
+ *
+ * @param {!Uint8Array} blob
+ * @return {!Certificate}
+ * @see https://github.com/openssh/openssh-portable/blob/master/PROTOCOL.certkeys
+ */
+export function parseCertificate(blob) {
+  const r = new Reader(blob);
+  if (r.text() !== SK_ECDSA_CERT_TYPE) {
+    throw new Error('not an sk-ecdsa certificate');
+  }
+  r.string();  // Nonce.
+  if (r.text() !== 'nistp256') {
+    throw new Error('unsupported curve');
+  }
+  const publicKey = r.string();
+  const application = r.text();
+  r.uint64();  // Serial.
+  if (r.uint32() !== CERT_TYPE_USER) {
+    throw new Error('not a user certificate');
+  }
+  const keyId = r.text();
+  const principals = readStringList(r.string());
+  const validAfter = Number(r.uint64());
+  const validBefore = r.uint64();
+  const criticalOptions = readOptionNames(r.string());
+  r.string();  // Extensions.
+  r.string();  // Reserved.
+  r.string();  // CA key.
+  r.string();  // Signature.
+  if (!r.eom()) {
+    throw new Error('trailing data');
+  }
+  return {
+    blob, publicKey, application, keyId, principals, validAfter,
+    validBefore: validBefore === CERT_FOREVER ? null : Number(validBefore),
+    verifyRequired: criticalOptions.includes('verify-required'),
+  };
+}
+
+/**
+ * Parse a certificate as ssh-keygen writes it (id-cert.pub): its type,
+ * base64 & maybe a comment.
+ *
+ * @param {string} line
+ * @return {!Certificate}
+ * @throws {!Error} Saying what's wrong, for the user.
+ */
+export function parseCertificateLine(line) {
+  const [type, base64] = line.trim().split(/\s+/);
+  if (type !== SK_ECDSA_CERT_TYPE) {
+    throw new Error(type?.endsWith('-cert-v01@openssh.com') ?
+        'it\'s for another kind of key' : 'that isn\'t a certificate');
+  }
+  try {
+    return parseCertificate(fromBase64(base64));
+  } catch (e) {
+    throw new Error('that isn\'t a certificate');
+  }
+}
+
+/**
+ * @param {!Certificate} cert
+ * @param {number=} now In milliseconds since the epoch.
+ * @return {boolean} Whether it's valid now (as far as this computer's clock
+ *     can tell).
+ */
+export function isCertificateCurrent(cert, now = Date.now()) {
+  const seconds = now / 1000;
+  return cert.validAfter <= seconds &&
+      (cert.validBefore === null || seconds < cert.validBefore);
 }
 
 /**

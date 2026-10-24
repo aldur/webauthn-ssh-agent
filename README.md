@@ -37,6 +37,11 @@ reviewed.
 Keys are offered to servers in the key list's order: drag a row by its handle
 to change it.
 
+If your servers trust an OpenSSH CA (`TrustedUserCAKeys`), have it sign a
+key's public key and add the certificate with the key's **+** button.  While
+valid, the certificate is offered before the key.  For a key that requires a
+PIN or fingerprint, ask the CA for `-O verify-required`.
+
 Agent forwarding (`ssh -A`) works, with an extra confirmation per login.  On
 the server you forward the agent to, `ssh` must be OpenSSH 10.3+: older
 versions reject the WebAuthn signatures a browser makes when they come from an

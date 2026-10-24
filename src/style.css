@@ -286,6 +286,19 @@ body.manage button.icon.yes {
   color: var(--yes);
 }
 
+body.manage button.icon.wrong {
+  color: var(--wrong);
+}
+
+/* Shown on every row, so it stays out of the way until wanted. */
+body.manage button.icon.faint:not(:hover, :focus-visible) {
+  color: GrayText;
+}
+
+body.manage button.icon.cert {
+  font-size: 0.8em;
+}
+
 body.manage button.icon:hover {
   border-color: var(--line);
 }
@@ -345,4 +358,68 @@ body.manage .status:not(:empty) {
 .facts dd {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+/* A key's certificate. */
+body.manage dialog.cert {
+  background: Canvas;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: CanvasText;
+  max-width: min(40em, 90vw);
+}
+
+body.manage dialog.cert::backdrop {
+  background: rgb(0 0 0 / 30%);
+}
+
+body.manage dialog.cert h3 {
+  margin-top: 0;
+}
+
+body.manage dialog.cert li {
+  margin-bottom: 0.8em;
+}
+
+body.manage dialog.cert code {
+  overflow-wrap: anywhere;
+}
+
+body.manage dialog.cert textarea {
+  box-sizing: border-box;
+  display: block;
+  font-family: monospace;
+  margin-top: 0.4em;
+  width: 100%;
+}
+
+body.manage dialog.cert code.block {
+  display: block;
+  margin-top: 0.3em;
+}
+
+body.manage dialog.cert .file {
+  color: LinkText;
+  display: inline;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+body.manage dialog.cert .file input {
+  display: none;
+}
+
+body.manage dialog.cert .error {
+  color: var(--wrong);
+  min-height: 1.2em;
+}
+
+body.manage dialog.cert .buttons {
+  display: flex;
+  gap: 0.5em;
+  margin-bottom: 0;
+}
+
+body.manage dialog.cert .spacer {
+  flex: 1;
 }

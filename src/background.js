@@ -11,10 +11,12 @@ import {handleRequest} from './agent.js';
 import {SessionBindings} from './binding.js';
 import {callerName} from './callers.js';
 import {
-  WEBAUTHN_TIMEOUT_MS, confirmationFor, keyBlob, loadKeys,
+  WEBAUTHN_TIMEOUT_MS, confirmationFor, keyBlob, keyCertificate, loadKeys,
 } from './keys.js';
 import {Decision, assess} from './policy.js';
 import {loadSettings} from './settings.js';
+import {isCertificateCurrent} from './ssh.js';
+import {displayText} from './text.js';
 
 /** Limit on the size of an agent request; real ones are a few KiB at most. */
 const MAX_REQUEST_BYTES = 256 * 1024;
@@ -39,6 +41,7 @@ const DETAILS_TIMEOUT_MS = 3000;
  *
  * @type {!Map<string, {
  *   key: !Object,
+ *   certificate: (string|undefined),
  *   data: !Uint8Array,
  *   caller: string,
  *   decision: string,
@@ -74,14 +77,17 @@ let openedManagePage = false;
 /**
  * Ask the user to sign in a window.
  *
- * @param {!Object} key The StoredKey to use.
+ * @param {{key: !Object, certificate: (string|undefined)}} identity The
+ *     StoredKey to use, & the key ID of its certificate if that's what's
+ *     offered.
  * @param {!Uint8Array} data The SSH data to sign.
  * @param {!Connection} connection Where the request came from.
  * @param {string} decision A policy Decision other than refuse.
  * @param {!Object} fields What to show the user (policy Fields).
  * @return {!Promise<!Uint8Array>} The SSH signature.
  */
-function signInWindow(key, data, connection, decision, fields) {
+function signInWindow({key, certificate}, data, connection, decision,
+                      fields) {
   if (connection.pending >= MAX_PENDING_PER_CONNECTION) {
     return Promise.reject(new Error('too many pending requests'));
   }
@@ -92,8 +98,8 @@ function signInWindow(key, data, connection, decision, fields) {
       return;
     }
     const id = crypto.randomUUID();
-    const request = {id, key, data, caller: connection.caller, decision,
-                     fields, connection, resolve, reject};
+    const request = {id, key, certificate, data, caller: connection.caller,
+                     decision, fields, connection, resolve, reject};
     pending.set(id, request);
     /** @param {number} delay How long to leave the window up. */
     const finish = (delay) => {
@@ -206,6 +212,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       caller: request.caller,
       fields: request.fields,
       key: {comment: request.key.comment},
+      certificate: request.certificate,
     } : null);
     return;
   }
@@ -225,6 +232,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case 'get-sign-request':
       sendResponse({
         key: request.key,
+        certificate: request.certificate,
         data: Array.from(request.data),
         caller: request.caller,
         decision: request.decision,
@@ -286,6 +294,26 @@ chrome.runtime.onConnectExternal.addListener((port) => {
 });
 
 /**
+ * What the agent offers for a key: the key, after its certificate if it has
+ * a valid one.  ssh asks the server which it accepts before asking for a
+ * signature, so offering both costs no touch.
+ *
+ * @param {!Object} key A StoredKey.
+ * @return {!Array<{key: !Object, blob: !Uint8Array, comment: string,
+ *                  certificate: (string|undefined)}>} Agent Identities, with
+ *     the key, & the certificate's key ID (for the user) if it's one.
+ */
+function identitiesOf(key) {
+  const plain = {key, blob: keyBlob(key), comment: key.comment};
+  const cert = keyCertificate(key);
+  if (!cert || !isCertificateCurrent(cert)) {
+    return [plain];
+  }
+  return [{key, blob: cert.blob, comment: key.comment,
+           certificate: displayText(cert.keyId)}, plain];
+}
+
+/**
  * Serve the agent protocol on a connection.
  *
  * @param {!chrome.runtime.Port} port
@@ -308,7 +336,7 @@ function serve(port, caller, early) {
       openedManagePage = true;
       chrome.runtime.openOptionsPage();
     }
-    return keys.map((key) => ({key, blob: keyBlob(key), comment: key.comment}));
+    return keys.flatMap(identitiesOf);
   };
   const backend = {
     identities,
@@ -322,7 +350,7 @@ function serve(port, caller, early) {
       if (decision === Decision.REFUSE) {
         throw new Error(`refused: ${reason}`);
       }
-      return signInWindow(identity.key, data, connection, decision, fields);
+      return signInWindow(identity, data, connection, decision, fields);
     },
     bind: (hostKey, sessionId, signature, forwarded) =>
       connection.bindings.bind(hostKey, sessionId, signature, forwarded),

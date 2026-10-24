@@ -21,12 +21,14 @@ if [[ -z $ssh_dir ]]; then
 fi
 
 ssh-keygen -q -t ed25519 -N '' -f "$work/hostkey"
+ssh-keygen -q -t ed25519 -N '' -f "$work/ca"
 cat > "$work/sshd_config" <<CFG
 Port 2222
 ListenAddress 127.0.0.1
 HostKey $work/hostkey
 PidFile $work/sshd.pid
 AuthorizedKeysFile $work/authorized_keys
+TrustedUserCAKeys $work/ca.pub
 PermitRootLogin yes
 StrictModes no
 PasswordAuthentication no
@@ -37,5 +39,5 @@ CFG
 
 node test/e2e/e2e.mjs "$PWD" "$(realpath "$ssh_dir")" "$work/profile" \
     "$work/authorized_keys" 2222 "$(id -un)" \
-    "$(ssh-keygen -lf "$work/hostkey.pub" | cut -d' ' -f2)"
+    "$(ssh-keygen -lf "$work/hostkey.pub" | cut -d' ' -f2)" "$work/ca"
 grep 'Accepted publickey' "$work/sshd.log"

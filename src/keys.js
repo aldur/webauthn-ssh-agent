@@ -43,7 +43,8 @@ import {recoverPublicKeys, verifySignature} from './p256.js';
 import {Confirmation, loadSettings} from './settings.js';
 import {
   authorizedKeysLine, decodeDerEcdsaSignature, p256PointFromSpki,
-  skEcdsaKeyBlob, webauthnAssertionToSshSignature,
+  parseCertificate, parseCertificateLine, skEcdsaKeyBlob,
+  webauthnAssertionToSshSignature,
 } from './ssh.js';
 import {cleanName, utf8Prefix} from './text.js';
 
@@ -85,6 +86,9 @@ const USER_HANDLE_NAME_BYTES =
 const TRANSPORT_PATTERN = /^[a-z-]{1,32}$/;
 const MAX_TRANSPORTS = 8;
 
+/** Limit on a certificate's size, base64url encoded: real ones are ~1 KiB. */
+const MAX_CERTIFICATE_LENGTH = 4096;
+
 /**
  * What to create the key on.  It only steers the browser's dialog: what
  * the user gets is told by the authenticator's attachment & flags.
@@ -125,7 +129,8 @@ export const Attachment = {
  * than created (created is then when it was imported).  order is its place
  * in the list, which is the order keys are offered to servers: keys without
  * one come last, & ties (e.g. from reordering on two computers at once) go
- * by age.
+ * by age.  certificate is an OpenSSH certificate for it, if the user added
+ * one.
  *
  * @typedef {{
  *   credentialId: string,
@@ -145,6 +150,7 @@ export const Attachment = {
  *   aaguid: (string|undefined),
  *   backupEligible: (boolean|undefined),
  *   backedUp: (boolean|undefined),
+ *   certificate: (string|undefined),
  * }}
  */
 export let StoredKey;
@@ -234,7 +240,17 @@ export function validateKey(raw, applications) {
           v.every((t) => TRANSPORT_PATTERN.test(t))) ||
       !valid(raw.aaguid, (v) => typeof v === 'string' &&
           /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(v)) ||
-      !flag(raw.backupEligible) || !flag(raw.backedUp)) {
+      !flag(raw.backupEligible) || !flag(raw.backedUp) ||
+      !valid(raw.certificate,
+             (v) => base64url(v, MAX_CERTIFICATE_LENGTH))) {
+    return null;
+  }
+  // A certificate must be for this key (it's synced, so untrusted too).
+  try {
+    if (raw.certificate && !isCertificateFor(keyCertificate(raw), raw)) {
+      return null;
+    }
+  } catch (e) {
     return null;
   }
   let point;
@@ -264,7 +280,50 @@ export function validateKey(raw, applications) {
     aaguid: raw.aaguid,
     backupEligible: raw.backupEligible,
     backedUp: raw.backedUp,
+    certificate: raw.certificate,
   };
+}
+
+/**
+ * @param {!Object} cert A Certificate (see ssh.js).
+ * @param {{publicKey: string, application: string}} key
+ * @return {boolean} Whether it's a certificate for that key.
+ */
+function isCertificateFor(cert, key) {
+  return equalBytes(cert.publicKey, fromBase64Url(key.publicKey)) &&
+      cert.application === key.application;
+}
+
+/**
+ * @param {!StoredKey} key
+ * @return {?Object} Its Certificate (see ssh.js), if any.
+ */
+export function keyCertificate(key) {
+  return key.certificate ?
+      parseCertificate(fromBase64Url(key.certificate)) : null;
+}
+
+/**
+ * Add a certificate to a key, replacing any it had.
+ *
+ * @param {!StoredKey} key
+ * @param {string} line The certificate, as in id-cert.pub.
+ * @return {!Promise<void>}
+ */
+export async function setCertificate(key, line) {
+  const cert = parseCertificateLine(line);
+  if (!isCertificateFor(cert, key)) {
+    throw new Error('it\'s for another key');
+  }
+  await updateKey(key, {certificate: toBase64Url(cert.blob)});
+}
+
+/**
+ * @param {!StoredKey} key
+ * @return {!Promise<void>}
+ */
+export async function removeCertificate(key) {
+  await updateKey(key, {certificate: undefined});
 }
 
 /**
@@ -482,6 +541,14 @@ export function keyBlob(key) {
 export function keyAuthorizedKeysLine(key) {
   return authorizedKeysLine(
       keyBlob(key), key.comment, {verifyRequired: key.verify});
+}
+
+/**
+ * @param {!StoredKey} key
+ * @return {string} The key's public key, as in id.pub: what a CA signs.
+ */
+export function keyPublicKeyLine(key) {
+  return authorizedKeysLine(keyBlob(key), key.comment);
 }
 
 /**

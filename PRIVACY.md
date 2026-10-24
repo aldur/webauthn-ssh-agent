@@ -4,10 +4,11 @@ WebAuthn SSH Agent does not collect, transmit or sell any data.
 
 **What it stores.**  For each SSH key you create or import: the key's name,
 its public key, its WebAuthn credential ID, the extension's RP ID, the creation
-date, the key's settings and place in the list, and what its authenticator
-reported about it (e.g. its model ID and whether it can sync).  This is stored
-with `chrome.storage.sync`, i.e. in your Chrome profile, which Chrome syncs
-between your own devices if you have sync turned on.  None of it is secret:
+date, the key's settings and place in the list, what its authenticator
+reported about it (e.g. its model ID and whether it can sync), and any
+OpenSSH certificate you add to it (which names the users it's for).  This
+is stored with `chrome.storage.sync`, i.e. in your Chrome profile, which
+Chrome syncs between your own devices if you have sync turned on.  None of it is secret:
 only your security key or passkey provider can use the private keys, and a
 credential ID is useless without it.
 

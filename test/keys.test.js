@@ -3,9 +3,11 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
-import {sha256, toBase64Url} from '../src/bytes.js';
+import {fromBase64Url, sha256, toBase64, toBase64Url} from '../src/bytes.js';
 import {findApplication} from '../src/keys.js';
-import {attested, authDataHeader, credProtect} from './helpers.js';
+import {
+  attested, authDataHeader, certificate, credProtect,
+} from './helpers.js';
 
 test('findApplication', async () => {
   const hash = await sha256('chrome-extension://abcdef');
@@ -234,6 +236,39 @@ test('renaming & other updates are validated', async () => {
   await assert.rejects(renameKey(key, ' \n '), /needs a name/);
   await assert.rejects(setKeyConfirmation(key, 'loud'), /invalid change/);
   await assert.rejects(renameKey(storedKey('gone', 1), 'x'), /no such key/);
+  delete globalThis.chrome;
+  delete globalThis.location;
+});
+
+test('certificates: only for their own key', async () => {
+  const {keyCertificate, loadKeys, removeCertificate, setCertificate,
+         validateKey} = await import('../src/keys.js');
+  const cert = certificate(fromBase64Url(POINT), ORIGIN);
+  const line = (blob) =>
+    `sk-ecdsa-sha2-nistp256-cert-v01@openssh.com ${toBase64(blob)} me@laptop`;
+  const {sync} = fakeStorage();
+  sync['key:a'] = storedKey('a', 1);
+  let [key] = await loadKeys();
+
+  await setCertificate(key, line(cert));
+  [key] = await loadKeys();
+  assert.deepEqual(keyCertificate(key).blob, cert);
+  await removeCertificate(key);
+  [key] = await loadKeys();
+  assert.equal(keyCertificate(key), null);
+
+  // Another key's, or another application's: refused, & dropped from sync.
+  const other = new Uint8Array([4, ...new Uint8Array(64).fill(2)]);
+  const elsewhere = 'chrome-extension://x';
+  for (const bad of [certificate(other, ORIGIN),
+                     certificate(fromBase64Url(POINT), elsewhere)]) {
+    await assert.rejects(setCertificate(key, line(bad)), /another key/);
+    assert.equal(validateKey(storedKey('a', 1, {
+      certificate: toBase64Url(bad),
+    }), [ORIGIN]), null);
+  }
+  assert.equal(validateKey(storedKey('a', 1, {certificate: 'AAAA'}), [ORIGIN]),
+               null);
   delete globalThis.chrome;
   delete globalThis.location;
 });

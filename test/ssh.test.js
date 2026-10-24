@@ -3,13 +3,15 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
-import {concat, fromBase64} from '../src/bytes.js';
+import {concat, fromBase64, toBase64} from '../src/bytes.js';
 import {
   Reader, WEBAUTHN_SK_ECDSA_SIG_TYPE, authorizedKeysLine,
   decodeDerEcdsaSignature, describeSignData, encodeMpint, encodeString,
-  fingerprint, p256PointFromSpki, skEcdsaKeyBlob,
+  fingerprint, isCertificateCurrent, p256PointFromSpki, parseCertificate,
+  parseCertificateLine, skEcdsaKeyBlob,
   webauthnAssertionToSshSignature,
 } from '../src/ssh.js';
+import {certificate} from './helpers.js';
 
 // A key sshd accepted in an end-to-end test against a WebAuthn virtual
 // authenticator on http://localhost.
@@ -26,6 +28,50 @@ test('authorized_keys line', () => {
   assert.equal(authorizedKeysLine(blob, 'my-key'), `${AUTHORIZED_KEY} my-key`);
   assert.equal(authorizedKeysLine(blob, 'my-key', {verifyRequired: true}),
                `verify-required ${AUTHORIZED_KEY} my-key`);
+});
+
+test('parseCertificate', () => {
+  const cert = certificate(POINT, 'localhost');
+  assert.deepEqual(parseCertificate(cert), {
+    blob: cert, publicKey: POINT, application: 'localhost', keyId: 'id',
+    principals: ['alice'], validAfter: 1000, validBefore: null,
+    verifyRequired: false,
+  });
+  const limited = parseCertificate(certificate(POINT, 'localhost', {
+    principals: [], validBefore: 2000n,
+    options: ['force-command', 'verify-required'],
+  }));
+  assert.deepEqual(
+      [limited.principals, limited.validBefore, limited.verifyRequired],
+      [[], 2000, true]);
+  // Not a certificate, or truncated, or with trailing data.
+  for (const bad of [skEcdsaKeyBlob(POINT, 'localhost'),
+                     cert.subarray(0, cert.length - 1),
+                     concat(cert, new Uint8Array(1))]) {
+    assert.throws(() => parseCertificate(bad));
+  }
+});
+
+test('parseCertificateLine: says what\'s wrong', () => {
+  const blob = certificate(POINT, 'localhost');
+  const line = `sk-ecdsa-sha2-nistp256-cert-v01@openssh.com ${toBase64(blob)}`;
+  assert.deepEqual(parseCertificateLine(`  ${line} me@laptop\n`).blob, blob);
+  assert.throws(
+      () => parseCertificateLine('ssh-ed25519-cert-v01@openssh.com AAAA'),
+      /another kind of key/);
+  for (const bad of ['', 'ssh-ed25519 AAAA', `${line}!`, line.slice(0, -4)]) {
+    assert.throws(() => parseCertificateLine(bad), /isn't a certificate/, bad);
+  }
+});
+
+test('isCertificateCurrent', () => {
+  const cert = {validAfter: 1000, validBefore: 2000};
+  assert.equal(isCertificateCurrent(cert, 999_000), false);
+  assert.equal(isCertificateCurrent(cert, 1_000_000), true);
+  assert.equal(isCertificateCurrent(cert, 2_000_000), false);
+  assert.equal(
+      isCertificateCurrent({validAfter: 0, validBefore: null}, Date.now()),
+      true);
 });
 
 test('encodeMpint', () => {

@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 /**
- * @fileoverview Test data: SSH host keys made with WebCrypto, & WebAuthn
- * authenticator data.
+ * @fileoverview Test data: SSH host keys made with WebCrypto, WebAuthn
+ * authenticator data & SSH certificates.
  */
 
 import {concat, fromBase64Url} from '../src/bytes.js';
-import {encodeMpint, encodeString} from '../src/ssh.js';
+import {
+  SK_ECDSA_CERT_TYPE, encodeMpint, encodeString, encodeUint32,
+} from '../src/ssh.js';
 
 /**
  * @param {string} type 'ed25519', 'nistp256' or 'rsa'.
@@ -72,3 +74,36 @@ export const attested = [...new Uint8Array(16), 0, 4, 9, 9, 9, 9, ...coseKey];
 // {"credProtect": 3}
 export const credProtect =
     [0xa1, 0x6b, ...new TextEncoder().encode('credProtect'), 0x03];
+
+/**
+ * An sk-ecdsa user certificate, with a dummy CA signature.
+ *
+ * @param {!Uint8Array} point The key's public key.
+ * @param {string} application
+ * @param {{principals: (!Array<string>|undefined),
+ *          validBefore: (bigint|undefined),
+ *          options: (!Array<string>|undefined)}=} options validBefore in
+ *     seconds; options are critical options' names.
+ * @return {!Uint8Array}
+ */
+export function certificate(point, application,
+                            {principals = ['alice'],
+                             validBefore = 0xffffffffffffffffn,
+                             options = []} = {}) {
+  const uint64 = (n) => {
+    const bytes = new Uint8Array(8);
+    new DataView(bytes.buffer).setBigUint64(0, n);
+    return bytes;
+  };
+  return concat(
+      encodeString(SK_ECDSA_CERT_TYPE), encodeString(new Uint8Array(32)),
+      encodeString('nistp256'), encodeString(point),
+      encodeString(application), uint64(7n), encodeUint32(1),
+      encodeString('id'),
+      encodeString(concat(...principals.map((p) => encodeString(p)))),
+      uint64(1000n), uint64(validBefore),
+      encodeString(concat(...options.flatMap(
+          (o) => [encodeString(o), encodeString('')]))),
+      encodeString(''),
+      encodeString(''), encodeString('ca key'), encodeString('signature'));
+}

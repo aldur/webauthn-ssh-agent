@@ -7,16 +7,18 @@
  *
  * Usage: node e2e.mjs <agent dir> <secure shell dir> <profile dir>
  *            <authorized_keys path> <port> <user> <sshd host key fingerprint>
+ *            <user CA private key path>
  */
 
+import {execFileSync} from 'node:child_process';
 import fs from 'node:fs';
 import {createRequire} from 'node:module';
 
 const require = createRequire(process.env.PLAYWRIGHT_DIR ?? import.meta.url);
 const {chromium} = require('playwright');
 
-const [, , agentDir, sshDir, profileDir, authKeys, port, user, hostKeyFp] =
-    process.argv;
+const [, , agentDir, sshDir, profileDir, authKeys, port, user, hostKeyFp,
+  caKey] = process.argv;
 const outsiderDir = new URL('./outsider', import.meta.url).pathname;
 
 const ctx = await chromium.launchPersistentContext(profileDir, {
@@ -352,6 +354,23 @@ if (closeNextWindow) {
   throw new Error('no touch window to close');
 }
 console.log('closing the touch window skipped to the next key');
+
+// A certificate from a CA sshd trusts, instead of authorized_keys.
+const pub = `${caKey}-user.pub`;
+fs.writeFileSync(pub, lines['touch-key'] + '\n');
+execFileSync('ssh-keygen', ['-q', '-s', caKey, '-I', 'e2e', '-n', user,
+  '-V', '+1h', pub]);
+const certLine = fs.readFileSync(`${caKey}-user-cert.pub`, 'utf8');
+await options.evaluate(async (certLine) => {
+  const keys = await import('./keys.js');
+  const key = (await keys.loadKeys()).find((k) => k.comment === 'touch-key');
+  await keys.setCertificate(key, certLine);
+}, certLine);
+fs.writeFileSync(authKeys, '');
+await login('CERTIFICATE');
+check(signWindows.at(-1).facts?.['With key'] ===
+      'touch-key, certificate "e2e"', signWindows.at(-1));
+console.log('logged in with touch-key\'s certificate');
 
 await ctx.close();
 console.log('PASS');

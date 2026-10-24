@@ -144,5 +144,40 @@
     </details>
 
     <p id="status" class="status" role="status"></p>
+
+    <dialog id="cert-dialog" class="cert">
+      <h3 id="cert-title"></h3>
+      <p id="cert-current"></p>
+      <p id="cert-pin" class="warning">
+        This key requires a PIN or fingerprint, but the certificate doesn't:
+        servers will accept a touch alone.  Ask for one with
+        <code>-O verify-required</code>.
+      </p>
+      <ol>
+        <li>
+          Give your CA this key's public key
+          <button id="cert-copy-key" class="icon" type="button"
+                  data-tip="Copy the public key"
+                  aria-label="Copy the public key">⧉</button>
+          to sign, e.g.:
+          <code id="cert-command" class="block"></code>
+        </li>
+        <li>
+          Paste the certificate it gives back (<code>…-cert.pub</code>),
+          or <label class="file">choose the file<input id="cert-file"
+            type="file" accept=".pub,text/plain" /></label>:
+          <textarea id="cert-text" rows="4" spellcheck="false"
+                    autocomplete="off"
+                    placeholder="sk-ecdsa-sha2-nistp256-cert-v01@openssh.com AAAA…"></textarea>
+        </li>
+      </ol>
+      <p id="cert-error" class="error" role="alert"></p>
+      <p class="buttons">
+        <button id="cert-remove" type="button">Remove certificate</button>
+        <span class="spacer"></span>
+        <button id="cert-cancel" type="button">Cancel</button>
+        <button id="cert-save" class="primary" type="button">Add</button>
+      </p>
+    </dialog>
   </body>
 </html>

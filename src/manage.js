@@ -7,11 +7,13 @@
 import {AAGUID_NAMES} from './aaguids.js';
 import {
   Attachment, Kind, createKey, deleteKey, importKey, isMismatched, isVerified,
-  keyAuthorizedKeysLine, keyBlob, loadKeys, renameKey, reorderKeys,
+  keyAuthorizedKeysLine, keyBlob, keyCertificate, keyPublicKeyLine, loadKeys,
+  removeCertificate, renameKey, reorderKeys, setCertificate,
   setKeyConfirmation, verifyKey,
 } from './keys.js';
 import {Confirmation, loadSettings, saveSetting} from './settings.js';
-import {fingerprint} from './ssh.js';
+import {fingerprint, isCertificateCurrent} from './ssh.js';
+import {displayText} from './text.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -64,6 +66,9 @@ const COLUMNS = [
 /** For what the authenticator hasn't reported yet (older keys). */
 const UNKNOWN = 'Not known yet: updated the next time the key is used';
 
+/** How much of a chosen certificate file to read: real ones are ~1 KiB. */
+const MAX_CERTIFICATE_FILE_BYTES = 64 * 1024;
+
 /** Clears the status message. */
 let statusTimer;
 
@@ -74,6 +79,8 @@ let highlight = null;
 let order = [];
 /** A key whose drag handle to focus once the list redraws. */
 let focusAfterLoad = null;
+/** The key whose certificate dialog is open. */
+let certificateKey = null;
 
 /**
  * @param {string} message
@@ -479,8 +486,110 @@ function renderActions(key, verified) {
       forget.textContent = '✕';
     }, 5000);
   };
-  td.append(copy, forget);
+  td.append(renderCertificate(key), copy, forget);
   return td;
+}
+
+/**
+ * @param {number} seconds Since the epoch.
+ * @return {string} The date, as the user writes them.
+ */
+function formatDate(seconds) {
+  return new Date(seconds * 1000).toLocaleDateString(
+      undefined, {dateStyle: 'medium'});
+}
+
+/**
+ * @param {!Object} cert A Certificate (see ssh.js).
+ * @param {number=} now In seconds since the epoch.
+ * @return {string} E.g. 'expires Nov 22, 2026'.
+ */
+function describeValidity({validAfter, validBefore}, now = Date.now() / 1000) {
+  if (now < validAfter) {
+    return `valid from ${formatDate(validAfter)}`;
+  }
+  if (validBefore === null) {
+    return 'never expires';
+  }
+  return `${validBefore < now ? 'expired' : 'expires'} ` +
+      formatDate(validBefore);
+}
+
+/**
+ * @param {!Object} cert A Certificate (see ssh.js).
+ * @return {string} E.g. '"laptop" for alice, expires Nov 22, 2026'.
+ */
+function describeCertificate(cert) {
+  const users = displayText(cert.principals.join(', '), 128) || 'any user';
+  return `"${displayText(cert.keyId)}" for ${users}, ${describeValidity(cert)}`;
+}
+
+/**
+ * @param {!Object} key A StoredKey.
+ * @return {!Element} A button to add, or see & change, its certificate.
+ */
+function renderCertificate(key) {
+  const cert = keyCertificate(key);
+  const button = cert ?
+      element('button',
+              `icon cert ${isCertificateCurrent(cert) ? 'yes' : 'wrong'}`,
+              'cert', `Certificate ${describeCertificate(cert)}`) :
+      element('button', 'icon faint', '+',
+              'Add an OpenSSH certificate for this key');
+  button.onclick = () => openCertificateDialog(key);
+  return button;
+}
+
+/**
+ * @param {!Object} key A StoredKey.
+ * @return {string} A command for the CA to sign the key with.
+ */
+function signingCommand(key) {
+  return `ssh-keygen -s ca -I ${key.comment} -n $USER -V +52w ` +
+      (key.verify ? '-O verify-required ' : '') + `${key.comment}.pub`;
+}
+
+/**
+ * Show a key's certificate, & let the user add, replace or remove it.
+ *
+ * @param {!Object} key A StoredKey.
+ */
+function openCertificateDialog(key) {
+  certificateKey = key;
+  const cert = keyCertificate(key);
+  $('cert-title').textContent = `Certificate for "${key.comment}"`;
+  $('cert-current').hidden = !cert;
+  $('cert-current').textContent =
+      cert ? `Current: ${describeCertificate(cert)}.` : '';
+  $('cert-pin').hidden = !(cert && key.verify && !cert.verifyRequired);
+  $('cert-command').textContent = signingCommand(key);
+  $('cert-text').value = '';
+  $('cert-error').textContent = '';
+  $('cert-remove').hidden = !cert;
+  $('cert-save').textContent = cert ? 'Replace' : 'Add';
+  $('cert-dialog').showModal();
+}
+
+/** Fill the certificate dialog's text box from the file the user chose. */
+async function readCertificateFile() {
+  const [file] = $('cert-file').files;
+  $('cert-file').value = '';  // So choosing the same file again works.
+  if (file) {
+    $('cert-text').value =
+        (await file.slice(0, MAX_CERTIFICATE_FILE_BYTES).text()).trim();
+  }
+}
+
+/** Save the certificate the user pasted, or say what's wrong with it. */
+async function saveCertificate() {
+  try {
+    await setCertificate(certificateKey, $('cert-text').value);
+  } catch (e) {
+    $('cert-error').textContent = `Can't use it: ${e.message}.`;
+    return;
+  }
+  $('cert-dialog').close();
+  setStatus(`Added the certificate to "${certificateKey.comment}".`);
 }
 
 /**
@@ -577,6 +686,17 @@ function leftover(key) {
           '(e.g. ykman fido credentials delete).' :
       'Nothing was stored on the authenticator.';
 }
+
+$('cert-copy-key').onclick = () =>
+  copyText($('cert-copy-key'), keyPublicKeyLine(certificateKey));
+$('cert-file').onchange = readCertificateFile;
+$('cert-save').onclick = saveCertificate;
+$('cert-remove').onclick = async () => {
+  await removeCertificate(certificateKey);
+  $('cert-dialog').close();
+  setStatus(`Removed "${certificateKey.comment}"'s certificate.`);
+};
+$('cert-cancel').onclick = () => $('cert-dialog').close();
 
 $('create').onclick = () => {
   const name = $('name').value.trim();

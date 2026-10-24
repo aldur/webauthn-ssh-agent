@@ -11,9 +11,11 @@
 /**
  * Fill in the page's #facts & #warning, and its title.
  *
- * @param {{caller: string, fields: !Object, key: !Object}} request
+ * @param {{caller: string, fields: !Object, key: !Object,
+ *          certificate: (string|undefined)}} request certificate is the key
+ *     ID of the key's certificate, if that's what's used.
  */
-export function showRequest({caller, fields, key}) {
+export function showRequest({caller, fields, key, certificate}) {
   const facts = document.getElementById('facts');
   const add = (label, value) => {
     const dt = document.createElement('dt');
@@ -32,7 +34,8 @@ export function showRequest({caller, fields, key}) {
   }
   add('Server', fields.server);
   add('Route', fields.route);
-  add('With key', key.comment);
+  add('With key', certificate === undefined ? key.comment :
+      `${key.comment}, certificate "${certificate}"`);
 
   // Window title bars show this too.
   document.title = [
